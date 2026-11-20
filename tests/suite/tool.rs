@@ -200,8 +200,8 @@ fn test_apply_patch_cli_rejects_empty_patch() -> anyhow::Result<()> {
     apply_patch_command(tmp.path())?
         .arg("*** Begin Patch\n*** End Patch")
         .assert()
-        .failure()
-        .stderr("No files were modified.\n");
+        .code(2)
+        .stderr("Invalid patch: The patch must contain at least one hunk\n");
 
     Ok(())
 }
@@ -409,7 +409,7 @@ fn test_apply_patch_cli_failed_write_restores_earlier_writes() -> anyhow::Result
         .arg("*** Begin Patch\n*** Update File: a.txt\n@@\n-old\n+new\n*** Add File: sub/added.txt\n+added\n*** Delete File: link.txt\n*** Delete File: locked/gone.txt\n*** End Patch")
         .assert();
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o755))?;
-    assert.failure().stdout("");
+    assert.code(4).stdout("");
 
     assert_eq!(fs::read_to_string(root.join("a.txt"))?, "old\n");
     assert_eq!(

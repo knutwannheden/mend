@@ -1,62 +1,134 @@
 use std::io::Read;
 use std::io::Write;
+use std::process::ExitCode;
 
-fn main() {
-    std::process::exit(run());
+use patchwork::ApplyPatchError;
+use patchwork::ParseError;
+use patchwork::Plan;
+
+const USAGE: &str = "\
+Usage: patchwork [--check] [--diff] [PATCH]
+
+Applies a patch in the Codex apply_patch format, read from PATCH or from stdin.
+Either every file the patch names is changed, or none is.
+
+Options:
+  --check        Report what the patch would change without writing anything
+  --diff         Print a unified diff of the changes instead of one status line per file
+  -h, --help     Print this help
+  -V, --version  Print the version
+
+Exit status:
+  0  the patch applied
+  1  the patch does not fit the files; nothing was written
+  2  the patch or the command line is malformed; nothing was written
+  4  a file could not be read or written; no file was left changed
+";
+
+const DOES_NOT_APPLY: u8 = 1;
+const MALFORMED: u8 = 2;
+const IO_FAILURE: u8 = 4;
+
+#[derive(Default)]
+struct Options {
+    check: bool,
+    diff: bool,
+    patch: Option<String>,
 }
 
-fn run() -> i32 {
-    // Expect either one argument (the full patch) or read it from stdin.
-    let mut args = std::env::args_os();
-    let _argv0 = args.next();
-
-    let patch = match args.next() {
-        Some(arg) => match arg.into_string() {
-            Ok(s) => s,
-            Err(_) => {
-                eprintln!("Error: patchwork requires a UTF-8 PATCH argument.");
-                return 1;
-            }
-        },
-        None => {
-            let mut buf = String::new();
-            match std::io::stdin().read_to_string(&mut buf) {
-                Ok(_) => {
-                    if buf.is_empty() {
-                        eprintln!("Usage: patchwork 'PATCH'\n       echo 'PATCH' | patchwork");
-                        return 2;
-                    }
-                    buf
-                }
-                Err(err) => {
-                    eprintln!("Error: Failed to read PATCH from stdin.\n{err}");
-                    return 1;
-                }
-            }
-        }
+fn main() -> ExitCode {
+    let usage_error = |message: &str| {
+        eprintln!("{message}\n\n{USAGE}");
+        ExitCode::from(MALFORMED)
     };
+    let mut options = match parse_args(std::env::args().skip(1)) {
+        Ok(Some(options)) => options,
+        Ok(None) => return ExitCode::SUCCESS,
+        Err(message) => return usage_error(&message),
+    };
+    if options.patch.is_none() {
+        let mut patch = String::new();
+        if let Err(error) = std::io::stdin().read_to_string(&mut patch) {
+            eprintln!("Failed to read the patch from stdin: {error}");
+            return ExitCode::from(IO_FAILURE);
+        }
+        options.patch = Some(patch);
+    }
+    let patch = options.patch.take().unwrap_or_default();
+    if patch.trim().is_empty() {
+        return usage_error("No patch was given");
+    }
+    match run(&patch, options) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            match &error {
+                ApplyPatchError::ParseError(ParseError::InvalidPatchError(message)) => {
+                    eprintln!("Invalid patch: {message}")
+                }
+                ApplyPatchError::ParseError(ParseError::InvalidHunkError {
+                    message,
+                    line_number,
+                }) => eprintln!("Invalid patch hunk on line {line_number}: {message}"),
+                other => eprintln!("{other}"),
+            }
+            ExitCode::from(match error {
+                ApplyPatchError::DoesNotApply(_) => DOES_NOT_APPLY,
+                ApplyPatchError::ParseError(_) => MALFORMED,
+                ApplyPatchError::IoError { .. } => IO_FAILURE,
+            })
+        }
+    }
+}
 
-    // Refuse extra args to avoid ambiguity.
-    if args.next().is_some() {
-        eprintln!("Error: patchwork accepts exactly one argument.");
-        return 2;
+/// Returns `None` when an option such as `--help` has been answered in full.
+fn parse_args(args: impl Iterator<Item = String>) -> Result<Option<Options>, String> {
+    let mut options = Options::default();
+    for arg in args {
+        match arg.as_str() {
+            "--check" => options.check = true,
+            "--diff" => options.diff = true,
+            "-h" | "--help" => {
+                print!("{USAGE}");
+                return Ok(None);
+            }
+            "-V" | "--version" => {
+                println!("patchwork {}", env!("CARGO_PKG_VERSION"));
+                return Ok(None);
+            }
+            option if option.starts_with('-') => return Err(format!("Unknown option: {option}")),
+            _ if options.patch.is_some() => {
+                return Err("Only one PATCH argument is accepted".to_string());
+            }
+            _ => options.patch = Some(arg),
+        }
+    }
+    Ok(Some(options))
+}
+
+fn run(patch: &str, options: Options) -> Result<(), ApplyPatchError> {
+    let cwd = std::env::current_dir().map_err(|source| ApplyPatchError::IoError {
+        context: "Failed to determine the current directory".to_string(),
+        source,
+    })?;
+
+    let hunks = patchwork::parse_patch(patch)?;
+    let mut plan = Plan::compute(&hunks, &cwd)?;
+    if !options.check {
+        plan.commit()?;
     }
 
-    let cwd = match std::env::current_dir() {
-        Ok(cwd) => cwd,
-        Err(err) => {
-            eprintln!("Error: Failed to determine current directory.\n{err}");
-            return 1;
+    let mut stdout = std::io::stdout().lock();
+    for change in plan.changes() {
+        let written = if options.diff {
+            write!(stdout, "{}", change.unified_diff())
+        } else {
+            writeln!(stdout, "{} {}", change.status(), change.label().display())
+        };
+        // A reader that closes the pipe early has seen what it wanted.
+        if written.is_err() {
+            break;
         }
-    };
-    let mut stdout = std::io::stdout();
-    let mut stderr = std::io::stderr();
-    match patchwork::apply_patch(&patch, &cwd, &mut stdout, &mut stderr) {
-        Ok(()) => {
-            // Flush to ensure output ordering when used in pipelines.
-            let _ = stdout.flush();
-            0
-        }
-        Err(_) => 1,
     }
+    let _ = stdout.flush();
+    Ok(())
 }

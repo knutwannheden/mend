@@ -136,7 +136,13 @@ pub fn parse_patch(patch: &str) -> Result<Vec<Hunk>, ParseError> {
     let patch = patch_lines.join("\n");
     let mut parser = StreamingPatchParser::default();
     parser.push_delta(&patch)?;
-    parser.finish()
+    let hunks = parser.finish()?;
+    if hunks.is_empty() {
+        return Err(InvalidPatchError(
+            "The patch must contain at least one hunk".to_string(),
+        ));
+    }
+    Ok(hunks)
 }
 
 /// Checks the start and end lines of the patch text for `apply_patch`,
@@ -215,9 +221,10 @@ fn test_parse_patch() {
         parse_patch(
             "*** Begin Patch\n\
              *** End Patch"
-        )
-        .unwrap(),
-        Vec::new()
+        ),
+        Err(InvalidPatchError(
+            "The patch must contain at least one hunk".to_string()
+        ))
     );
     assert_eq!(
         parse_patch(

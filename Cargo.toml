@@ -10,6 +10,7 @@ repository = "https://github.com/knutwannheden/patchwork"
 doctest = false
 
 [dependencies]
+similar = "2"
 thiserror = "2"
 
 [dev-dependencies]

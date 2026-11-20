@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use crate::ApplyPatchError;
 use crate::Hunk;
 use crate::file_update::derive_new_contents_from_chunks;
+use similar::TextDiff;
 
 /// The complete set of file writes and deletions a patch will make, computed without touching disk.
 pub struct Plan {
@@ -39,6 +40,21 @@ impl FileChange {
 
     pub fn label(&self) -> &Path {
         &self.label
+    }
+
+    /// A unified diff of the change, with `/dev/null` standing for a path that does not exist.
+    pub fn unified_diff(&self) -> String {
+        let name = |contents: &Option<Vec<u8>>, prefix: &str| match contents {
+            Some(_) => format!("{prefix}/{}", self.label.display()),
+            None => "/dev/null".to_string(),
+        };
+        let text = |contents: &Option<Vec<u8>>| {
+            String::from_utf8_lossy(contents.as_deref().unwrap_or_default()).into_owned()
+        };
+        TextDiff::from_lines(&text(&self.before), &text(&self.after))
+            .unified_diff()
+            .header(&name(&self.before, "a"), &name(&self.after, "b"))
+            .to_string()
     }
 
     /// Where new contents go, which for a symbolic link is the file it points to.
@@ -86,12 +102,6 @@ fn symlink(_link: &Path, _path: &Path) -> io::Result<()> {
 impl Plan {
     /// Works out every change the hunks make, with later hunks seeing the result of earlier ones.
     pub fn compute(hunks: &[Hunk], cwd: &Path) -> Result<Plan, ApplyPatchError> {
-        if hunks.is_empty() {
-            return Err(ApplyPatchError::DoesNotApply(
-                "No files were modified.".to_string(),
-            ));
-        }
-
         let mut plan = Plan {
             changes: Vec::new(),
             created_dirs: Vec::new(),
