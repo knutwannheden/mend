@@ -13,7 +13,8 @@ use patchwork::ApplyPatchError;
 use patchwork::ParseError;
 use patchwork::Plan;
 
-const USAGE: &str = "Usage: patchwork [--check] [--diff] [--then <command> [--revert]] [PATCH]";
+const USAGE: &str =
+    "Usage: patchwork [-C <dir>] [--check] [--diff] [--then <command> [--revert]] [PATCH]";
 
 const HELP: &str = "\
 Applies a patch in the Codex apply_patch format, read from stdin or from PATCH.
@@ -31,6 +32,9 @@ Either every file the patch names is changed, or none is.
   *** End Patch
   EOF
 
+  Keep the quotes in <<'EOF'. Without them the shell expands every $name in the
+  patch and runs whatever stands in backticks before patchwork reads it.
+
 Patch format:
   *** Update File: <path>  Changes a file through one or more chunks
   *** Move to: <path>      Right after Update File: also renames the file
@@ -43,6 +47,7 @@ Patch format:
   A chunk line starts with a space (context), `-` (removed) or `+` (added).
   A chunk of only `+` lines is appended to the end of the file.
   A path is absolute or relative to the current directory, inside a repository or not.
+  For a long shared prefix use -C <dir>, which leaves the heredoc quoted.
 
 Matching:
   Each chunk must match exactly one place below the chunk before it. Whitespace
@@ -57,6 +62,7 @@ Running a command after the patch:
   --then with --revert is for an edit that lasts one run, such as a mutation check.
 
 Options:
+  -C <dir>          Resolve the relative paths in the patch against <dir>
   --check           Report what the patch would change without writing anything
   --diff            Print a unified diff of the changes instead of one status line per file
   --then <command>  Run <command> with `sh -c` once the patch is applied, keeping the edits if it fails
@@ -86,6 +92,7 @@ struct Options {
     diff: bool,
     then: Option<String>,
     revert: bool,
+    dir: Option<String>,
     patch: Option<String>,
 }
 
@@ -99,6 +106,11 @@ fn main() -> ExitCode {
         Ok(None) => return ExitCode::SUCCESS,
         Err(message) => return usage_error(&message),
     };
+    if let Some(dir) = &options.dir
+        && !std::path::Path::new(dir).is_dir()
+    {
+        return usage_error(&format!("-C: {dir} is not a directory"));
+    }
     if options.patch.is_none() {
         let mut patch = String::new();
         if let Err(error) = std::io::stdin().read_to_string(&mut patch) {
@@ -141,6 +153,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Options>,
             "--check" => options.check = true,
             "--diff" => options.diff = true,
             "--revert" => options.revert = true,
+            "-C" => options.dir = Some(args.next().ok_or("-C needs a directory")?),
             "--then" => {
                 let command = args.next().ok_or("--then needs a command")?;
                 options.then = Some(command);
@@ -178,7 +191,11 @@ fn run(patch: &str, options: Options) -> Result<ExitCode, ApplyPatchError> {
         std::env::current_dir().map_err(io_error("Failed to determine the current directory"))?;
 
     let hunks = patchwork::parse_patch(patch)?;
-    let mut plan = Plan::compute(&hunks, &cwd)?;
+    let base = match &options.dir {
+        Some(dir) => cwd.join(dir),
+        None => cwd,
+    };
+    let mut plan = Plan::compute(&hunks, &base)?;
     // Registered before the first write, so no signal can end the process with files left changed.
     let signal = match options.revert {
         true => Some(watch_signals().map_err(io_error("Failed to watch for signals"))?),

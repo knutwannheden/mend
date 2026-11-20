@@ -23,17 +23,20 @@ A docs/greeting.md
 ## Usage
 
 ```
-patchwork [--check] [--diff] [--then <command> [--revert]] [PATCH]
+patchwork [-C <dir>] [--check] [--diff] [--then <command> [--revert]] [PATCH]
 ```
 
 The patch is read from the `PATCH` argument, or from stdin when there is none. A relative path in the patch is resolved against the current directory.
 
 | Option | Effect |
 |---|---|
+| `-C <dir>` | Resolves the relative paths in the patch against `<dir>`. |
 | `--check` | Reports what the patch would change without writing anything. |
 | `--diff` | Prints a unified diff of the changes instead of the status lines. `git apply -R` reverses it. |
 | `--then <command>` | Runs `<command>` with `sh -c` once the patch is applied. When the command fails the edits stay in place. |
 | `--revert` | With `--then`, restores every file when the command has finished, whether it failed or succeeded. |
+
+Keep the quotes in `<<'EOF'`. In an unquoted heredoc the shell expands every `$name` in the patch and runs whatever stands in backticks, before `patchwork` reads it. For a long shared path prefix use `-C <dir>` instead of a shell variable.
 
 To run a build or test only when the patch applied, chain it with `&&` on the heredoc line, as in the example above. A long command can follow the closing `EOF` when the heredoc line ends with `&&`. A command that merely sits on the next line runs even when the patch failed.
 

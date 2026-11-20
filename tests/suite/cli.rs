@@ -114,7 +114,7 @@ fn test_exit_status_distinguishes_a_patch_that_does_not_fit_from_a_malformed_one
         .code(2)
         .stderr(
             "Unknown option: --frobnicate\n\
-             Usage: patchwork [--check] [--diff] [--then <command> [--revert]] [PATCH]\n\
+             Usage: patchwork [-C <dir>] [--check] [--diff] [--then <command> [--revert]] [PATCH]\n\
              Run `patchwork --help` for the patch format and examples.\n",
         );
 
@@ -196,5 +196,33 @@ fn test_help_shows_the_patch_format_and_how_to_chain_a_command() -> anyhow::Resu
     assert_eq!(help.status.code(), Some(0));
     assert!(stdout.contains("*** Update File: <path>"), "{stdout}");
     assert!(stdout.contains("patchwork <<'EOF' && "), "{stdout}");
+    Ok(())
+}
+
+#[test]
+fn test_dash_c_resolves_patch_paths_against_a_directory() -> anyhow::Result<()> {
+    let tmp = tempdir()?;
+    fs::create_dir_all(tmp.path().join("deep/dir"))?;
+    fs::write(tmp.path().join("deep/dir/f.txt"), "one\n")?;
+
+    apply_patch_command()?
+        .current_dir(tmp.path())
+        .args(["-C", "deep/dir"])
+        .write_stdin("*** Begin Patch\n*** Update File: f.txt\n@@\n-one\n+1\n*** End Patch")
+        .assert()
+        .success()
+        .stdout("M f.txt\n");
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("deep/dir/f.txt"))?,
+        "1\n"
+    );
+
+    apply_patch_command()?
+        .current_dir(tmp.path())
+        .args(["-C", "missing"])
+        .write_stdin("*** Begin Patch\n*** Add File: g.txt\n+new\n*** End Patch")
+        .assert()
+        .code(2);
+    assert!(!tmp.path().join("missing").exists());
     Ok(())
 }
