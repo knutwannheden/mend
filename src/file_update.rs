@@ -10,17 +10,29 @@ use crate::text_file::SourceFile;
 mod tests;
 
 /// Returns the contents that result from applying `chunks` to `original_contents`.
-/// `path` only labels error messages.
+/// `path` only labels messages. The second value notes each chunk that changed more than
+/// one place.
 pub(crate) fn derive_new_contents_from_chunks(
     path: &str,
     original_contents: &str,
     chunks: &[UpdateFileChunk],
-) -> Result<String, ApplyPatchError> {
+    matching: Matching,
+) -> Result<(String, Vec<String>), ApplyPatchError> {
     let mut source_file = SourceFile::parse(original_contents);
     let original_lines = source_file.line_texts();
-    let replacements = compute_replacements(&original_lines, path, chunks)?;
+    let (replacements, notes) = compute_replacements(&original_lines, path, chunks, matching)?;
     source_file.apply_replacements(&replacements);
-    Ok(source_file.into_contents())
+    Ok((source_file.into_contents(), notes))
+}
+
+/// How far a chunk may depart from matching whole lines in exactly one place.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Matching {
+    /// A chunk of one removed and one added line may replace part of a line, when no whole
+    /// line matches.
+    pub fragments: bool,
+    /// A chunk that matches several places changes all of them.
+    pub all: bool,
 }
 
 /// Compute a list of replacements needed to transform `original_lines` into the
@@ -34,9 +46,11 @@ fn compute_replacements(
     original_lines: &[String],
     path: &str,
     chunks: &[UpdateFileChunk],
-) -> Result<Vec<Replacement>, ApplyPatchError> {
+    matching: Matching,
+) -> Result<(Vec<Replacement>, Vec<String>), ApplyPatchError> {
     // Each replacement with the line where its chunk matched.
     let mut replacements: Vec<(usize, Replacement)> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
     let mut line_index: usize = 0;
     // The lines each chunk has matched so far, as (start, length).
     let mut matched: Vec<(usize, usize)> = Vec::new();
@@ -124,8 +138,19 @@ fn compute_replacements(
         if !in_order {
             found = seek_sequence(original_lines, pattern, 0, chunk.is_end_of_file);
         }
-        let start_idx = match found {
-            Match::One(start_idx) => start_idx,
+        // For a fragment, the lines it occurs in as they will read.
+        let mut rewritten: Vec<(usize, String)> = Vec::new();
+        let places: Vec<usize> = match found {
+            Match::One(start_idx) => vec![start_idx],
+            Match::Many(found) if matching.all => {
+                let mut apart: Vec<usize> = Vec::new();
+                for idx in found {
+                    if apart.last().is_none_or(|&last| idx >= last + pattern.len()) {
+                        apart.push(idx);
+                    }
+                }
+                apart
+            }
             Match::Many(found) => {
                 return Err(ApplyPatchError::DoesNotApply(format!(
                     "{chunk_label} matches {} places, at {}\n  \
@@ -150,65 +175,88 @@ fn compute_replacements(
                         line_numbers(&elsewhere)
                     )));
                 }
-                let reason = part_of_a_line(original_lines, pattern)
-                    .or_else(|| closest_place(original_lines, pattern));
-                return Err(ApplyPatchError::DoesNotApply(match reason {
-                    Some(reason) => format!("{chunk_label} matches nothing\n  {reason}"),
-                    None => {
-                        format!("{chunk_label} matches nothing, and no similar lines were found")
-                    }
-                }));
+                let one_pair = pattern.len() == 1
+                    && new_slice.len() == 1
+                    && chunk.context_line_indices.is_empty()
+                    && !pattern[0].trim().is_empty();
+                let everywhere = match matching.fragments && one_pair {
+                    true => fragment_places(original_lines, &pattern[0]),
+                    false => Vec::new(),
+                };
+                // A fragment is looked for in the same three steps as whole lines.
+                let within = |from: usize, to: usize| -> Vec<(usize, usize)> {
+                    everywhere
+                        .iter()
+                        .copied()
+                        .filter(|&(line, _)| from <= line && line < to)
+                        .collect()
+                };
+                let steps = [
+                    within(line_index, next_anchor.unwrap_or(line_index)),
+                    within(line_index, original_lines.len()),
+                    everywhere.clone(),
+                ];
+                let occurrences = steps
+                    .into_iter()
+                    .find(|step| !step.is_empty())
+                    .unwrap_or_default();
+                let mut lines: Vec<usize> = occurrences.iter().map(|&(line, _)| line).collect();
+                lines.dedup();
+                if occurrences.is_empty() {
+                    let reason = part_of_a_line(original_lines, pattern)
+                        .or_else(|| closest_place(original_lines, pattern));
+                    return Err(ApplyPatchError::DoesNotApply(match reason {
+                        Some(reason) => format!("{chunk_label} matches nothing\n  {reason}"),
+                        None => format!(
+                            "{chunk_label} matches nothing, and no similar lines were found"
+                        ),
+                    }));
+                }
+                if occurrences.len() > 1 && !matching.all {
+                    return Err(ApplyPatchError::DoesNotApply(format!(
+                        "{chunk_label}: its line `{}` occurs in {} places, at {}\n  \
+                         give more of the line so that it occurs once",
+                        shortened(&pattern[0]),
+                        occurrences.len(),
+                        line_numbers(&lines)
+                    )));
+                }
+                for &line in &lines {
+                    let whole = &original_lines[line];
+                    rewritten.push((line, whole.replace(pattern[0].as_str(), &new_slice[0])));
+                }
+                lines
             }
         };
-        let end_idx = start_idx + pattern.len();
-        if matched
-            .iter()
-            .any(|&(start, len)| start_idx < start + len && start < end_idx)
-        {
-            return Err(ApplyPatchError::DoesNotApply(format!(
-                "{chunk_label} matches only line {}, which an earlier chunk already matched",
-                start_idx + 1
-            )));
-        }
-        matched.push((start_idx, pattern.len()));
-
-        // Context lines occur in both sides of a patch chunk. Keep those
-        // original lines in place so their exact contents and terminators
-        // survive, especially when the file has mixed line endings.
-        let mut old_start = 0;
-        let mut new_start = 0;
-        for &(old_context, new_context) in &chunk.context_line_indices {
-            // A trailing empty context line can be removed from `pattern`
-            // and `new_slice` above when it represents the final newline.
-            if old_context >= pattern.len() || new_context >= new_slice.len() {
-                break;
+        for &start_idx in &places {
+            let end_idx = start_idx + pattern.len();
+            if matched
+                .iter()
+                .any(|&(start, len)| start_idx < start + len && start < end_idx)
+            {
+                return Err(ApplyPatchError::DoesNotApply(format!(
+                    "{chunk_label} matches only line {}, which an earlier chunk already matched",
+                    start_idx + 1
+                )));
             }
-            if old_start != old_context || new_start != new_context {
-                replacements.push((
-                    start_idx,
-                    (
-                        start_idx + old_start,
-                        old_context - old_start,
-                        new_slice[new_start..new_context].to_vec(),
-                    ),
-                ));
+            matched.push((start_idx, pattern.len()));
+            match rewritten.iter().find(|(line, _)| *line == start_idx) {
+                Some((_, line)) => {
+                    replacements.push((start_idx, (start_idx, 1, vec![line.clone()])));
+                }
+                None => push_replacements(&mut replacements, chunk, pattern, new_slice, start_idx),
             }
-            old_start = old_context + 1;
-            new_start = new_context + 1;
         }
-        if old_start != pattern.len() || new_start != new_slice.len() {
-            replacements.push((
-                start_idx,
-                (
-                    start_idx + old_start,
-                    pattern.len() - old_start,
-                    new_slice[new_start..].to_vec(),
-                ),
+        if places.len() > 1 {
+            notes.push(format!(
+                "{chunk_label} changed {} places, at {}",
+                places.len(),
+                line_numbers(&places)
             ));
         }
         // A chunk found above the search start leaves the search where it was.
-        if in_order {
-            line_index = end_idx;
+        if in_order && let Some(last) = places.last() {
+            line_index = last + pattern.len();
         }
     }
 
@@ -216,10 +264,56 @@ fn compute_replacements(
     // upper chunk's has to come first, whichever of the two the patch names first.
     replacements.sort_by_key(|(chunk_start, (index, _, _))| (*index, *chunk_start));
 
-    Ok(replacements
+    let replacements = replacements
         .into_iter()
         .map(|(_, replacement)| replacement)
-        .collect())
+        .collect();
+    Ok((replacements, notes))
+}
+
+/// Adds the replacements that turn the lines a chunk matched at `start_idx` into its new
+/// lines.
+///
+/// Context lines occur on both sides of a chunk. They stay in place, so their exact contents
+/// and line endings survive, especially in a file with mixed line endings.
+fn push_replacements(
+    replacements: &mut Vec<(usize, Replacement)>,
+    chunk: &UpdateFileChunk,
+    pattern: &[String],
+    new_slice: &[String],
+    start_idx: usize,
+) {
+    let mut old_start = 0;
+    let mut new_start = 0;
+    for &(old_context, new_context) in &chunk.context_line_indices {
+        // A trailing empty context line can have been dropped from `pattern` and `new_slice`
+        // where it stands for the final newline.
+        if old_context >= pattern.len() || new_context >= new_slice.len() {
+            break;
+        }
+        if old_start != old_context || new_start != new_context {
+            replacements.push((
+                start_idx,
+                (
+                    start_idx + old_start,
+                    old_context - old_start,
+                    new_slice[new_start..new_context].to_vec(),
+                ),
+            ));
+        }
+        old_start = old_context + 1;
+        new_start = new_context + 1;
+    }
+    if old_start != pattern.len() || new_start != new_slice.len() {
+        replacements.push((
+            start_idx,
+            (
+                start_idx + old_start,
+                pattern.len() - old_start,
+                new_slice[new_start..].to_vec(),
+            ),
+        ));
+    }
 }
 
 /// Formats zero-based line indices as `line 3` or `lines 3, 7`.
@@ -232,8 +326,6 @@ fn line_numbers(indices: &[usize]) -> String {
 /// Names the one line that holds a chunk line without being equal to it, which is what a
 /// chunk gets when it gives only a fragment of a long line.
 fn part_of_a_line(lines: &[String], pattern: &[String]) -> Option<String> {
-    const SHOWN: usize = 60;
-
     pattern
         .iter()
         .map(|line| line.trim())
@@ -247,15 +339,33 @@ fn part_of_a_line(lines: &[String], pattern: &[String]) -> Option<String> {
             if holders.next().is_some() {
                 return None;
             }
-            let mut shown: String = fragment.chars().take(SHOWN).collect();
-            if fragment.chars().count() > SHOWN {
-                shown.push('…');
-            }
             Some(format!(
-                "its line `{shown}` is only part of line {number}\n  \
-                 a chunk line has to be the whole line"
+                "its line `{}` is only part of line {number}\n  \
+                 a chunk line has to be the whole line\n  \
+                 with --fragment, a chunk of one `-` and one `+` line may give a part of one",
+                shortened(fragment)
             ))
         })
+}
+
+/// Every place where `fragment` occurs inside a line, as (line index, byte offset).
+fn fragment_places(lines: &[String], fragment: &str) -> Vec<(usize, usize)> {
+    lines
+        .iter()
+        .enumerate()
+        .flat_map(|(index, line)| line.match_indices(fragment).map(move |(at, _)| (index, at)))
+        .collect()
+}
+
+/// The start of a chunk line, for a message that has no room for a long one.
+fn shortened(line: &str) -> String {
+    const SHOWN: usize = 60;
+
+    let mut shown: String = line.chars().take(SHOWN).collect();
+    if line.chars().count() > SHOWN {
+        shown.push('…');
+    }
+    shown
 }
 
 /// Describes where in `lines` the `pattern` comes closest to matching, or returns `None`

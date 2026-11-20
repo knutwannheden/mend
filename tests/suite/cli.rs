@@ -114,7 +114,7 @@ fn test_exit_status_distinguishes_a_patch_that_does_not_fit_from_a_malformed_one
         .code(2)
         .stderr(
             "Unknown option: --frobnicate\n\
-             Usage: patchwork [-C <dir>] [--check] [--diff] [--then <command> [--revert]] [PATCH]\n\
+             Usage: patchwork [-C <dir>] [--check] [--diff] [--fragment] [--all] [--then <command> [--revert]] [PATCH]\n\
              Run `patchwork --help` for the patch format and examples.\n",
         );
 
@@ -224,5 +224,55 @@ fn test_dash_c_resolves_patch_paths_against_a_directory() -> anyhow::Result<()> 
         .assert()
         .code(2);
     assert!(!tmp.path().join("missing").exists());
+    Ok(())
+}
+
+#[test]
+fn test_fragment_option_lets_a_chunk_replace_part_of_a_line() -> anyhow::Result<()> {
+    let tmp = tempdir()?;
+    fs::write(tmp.path().join("f.txt"), "alpha beta gamma\n")?;
+    let patch = "*** Begin Patch\n*** Update File: f.txt\n@@\n-beta\n+BETA\n*** End Patch";
+
+    apply_patch_command()?
+        .current_dir(tmp.path())
+        .write_stdin(patch)
+        .assert()
+        .code(1);
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("f.txt"))?,
+        "alpha beta gamma\n"
+    );
+
+    apply_patch_command()?
+        .current_dir(tmp.path())
+        .arg("--fragment")
+        .write_stdin(patch)
+        .assert()
+        .success()
+        .stdout("M f.txt\n");
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("f.txt"))?,
+        "alpha BETA gamma\n"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_all_option_changes_every_match_and_names_the_lines_on_stderr() -> anyhow::Result<()> {
+    let tmp = tempdir()?;
+    fs::write(tmp.path().join("f.txt"), "x = 1\ny\nx = 1\n")?;
+
+    apply_patch_command()?
+        .current_dir(tmp.path())
+        .arg("--all")
+        .write_stdin("*** Begin Patch\n*** Update File: f.txt\n@@\n-x = 1\n+x = 2\n*** End Patch")
+        .assert()
+        .success()
+        .stdout("M f.txt\n")
+        .stderr("f.txt: chunk 1 of 1 changed 2 places, at lines 1, 3\n");
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("f.txt"))?,
+        "x = 2\ny\nx = 2\n"
+    );
     Ok(())
 }

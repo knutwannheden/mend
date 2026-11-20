@@ -5,13 +5,31 @@ use pretty_assertions::assert_eq;
 
 /// Applies the chunks of an `Update File` hunk with the given body to `original`.
 fn updated(original: &str, body: &str) -> Result<String, ApplyPatchError> {
+    applied(original, body, Matching::default()).map(|(contents, _)| contents)
+}
+
+/// Like `updated`, with the given leniency, and also returning the notes.
+fn applied(
+    original: &str,
+    body: &str,
+    matching: Matching,
+) -> Result<(String, Vec<String>), ApplyPatchError> {
     let patch = format!("*** Begin Patch\n*** Update File: f.txt\n{body}\n*** End Patch");
     let hunks = parse_patch(&patch).unwrap();
     let [Hunk::UpdateFile { chunks, .. }] = hunks.as_slice() else {
         panic!("expected a single UpdateFile hunk");
     };
-    derive_new_contents_from_chunks("f.txt", original, chunks)
+    derive_new_contents_from_chunks("f.txt", original, chunks, matching)
 }
+
+const FRAGMENTS: Matching = Matching {
+    fragments: true,
+    all: false,
+};
+const ALL: Matching = Matching {
+    fragments: false,
+    all: true,
+};
 
 #[test]
 fn chunks_with_leading_context_replace_separate_lines() {
@@ -215,7 +233,109 @@ fn chunk_line_that_is_only_part_of_one_file_line_is_pointed_out() {
         ),
         "f.txt: chunk 1 of 1 matches nothing\n  \
          its line `and the tail that changes` is only part of line 1\n  \
-         a chunk line has to be the whole line"
+         a chunk line has to be the whole line\n  \
+         with --fragment, a chunk of one `-` and one `+` line may give a part of one"
+    );
+}
+
+#[test]
+fn fragment_of_one_line_is_replaced_when_fragments_are_allowed() {
+    let start = format!("- [Index](f.md) — {}", "earlier words ".repeat(12));
+    let (contents, notes) = applied(
+        &format!("{start}and the tail that changes\nshort line\n"),
+        "@@\n-and the tail that changes\n+and the tail that changed",
+        FRAGMENTS,
+    )
+    .unwrap();
+
+    assert_eq!(
+        contents,
+        format!("{start}and the tail that changed\nshort line\n")
+    );
+    assert_eq!(notes, Vec::<String>::new());
+}
+
+#[test]
+fn fragment_is_tried_after_whole_lines_and_only_for_one_removed_and_one_added_line() {
+    assert_eq!(
+        applied("tail\nx tail\n", "@@\n-tail\n+TAIL", FRAGMENTS)
+            .unwrap()
+            .0,
+        "TAIL\nx tail\n"
+    );
+
+    assert_eq!(
+        applied("keep\nx tail y\n", "@@\n keep\n-tail\n+TAIL", FRAGMENTS)
+            .unwrap_err()
+            .to_string(),
+        "f.txt: chunk 1 of 1 matches nothing\n  \
+         its line `tail` is only part of line 2\n  \
+         a chunk line has to be the whole line\n  \
+         with --fragment, a chunk of one `-` and one `+` line may give a part of one"
+    );
+}
+
+#[test]
+fn fragment_follows_the_same_search_steps_as_whole_lines() {
+    assert_eq!(
+        applied(
+            "x tail\n# one\ny tail\n# two\nz tail\n",
+            "@@ # one\n-tail\n+TAIL\n@@ # two\n-z tail\n+z",
+            FRAGMENTS
+        )
+        .unwrap()
+        .0,
+        "x tail\n# one\ny TAIL\n# two\nz\n"
+    );
+}
+
+#[test]
+fn fragment_that_occurs_more_than_once_is_rejected() {
+    assert_eq!(
+        applied("a tail\nb tail\n", "@@\n-tail\n+TAIL", FRAGMENTS)
+            .unwrap_err()
+            .to_string(),
+        "f.txt: chunk 1 of 1: its line `tail` occurs in 2 places, at lines 1, 2\n  \
+         give more of the line so that it occurs once"
+    );
+}
+
+#[test]
+fn all_changes_every_place_a_chunk_matches_and_notes_them() {
+    let (contents, notes) = applied("x = 1\ny\nx = 1\n", "@@\n-x = 1\n+x = 2", ALL).unwrap();
+
+    assert_eq!(contents, "x = 2\ny\nx = 2\n");
+    assert_eq!(
+        notes,
+        ["f.txt: chunk 1 of 1 changed 2 places, at lines 1, 3"]
+    );
+}
+
+#[test]
+fn all_stays_within_the_step_that_first_has_a_match() {
+    assert_eq!(
+        applied(
+            "def a():\n  x\n  x\ndef b():\n  x\n",
+            "@@ def a():\n-  x\n+  y\n@@ def b():\n-  x\n+  w",
+            ALL
+        )
+        .unwrap()
+        .0,
+        "def a():\n  y\n  y\ndef b():\n  w\n"
+    );
+}
+
+#[test]
+fn all_with_fragments_replaces_every_occurrence() {
+    let both = Matching {
+        fragments: true,
+        all: true,
+    };
+    assert_eq!(
+        applied("a tail\nb tail tail\n", "@@\n-tail\n+T", both)
+            .unwrap()
+            .0,
+        "a T\nb T T\n"
     );
 }
 

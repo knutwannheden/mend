@@ -7,6 +7,7 @@ mod text_file;
 
 use std::io;
 
+pub use file_update::Matching;
 pub use parser::Hunk;
 pub use parser::ParseError;
 pub use parser::UpdateFileChunk;

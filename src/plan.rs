@@ -6,12 +6,15 @@ use std::path::PathBuf;
 
 use crate::ApplyPatchError;
 use crate::Hunk;
+use crate::Matching;
 use crate::file_update::derive_new_contents_from_chunks;
 use similar::TextDiff;
 
 /// The complete set of file writes and deletions a patch will make, computed without touching disk.
 pub struct Plan {
     changes: Vec<FileChange>,
+    /// What `compute` has to say beyond success, one line each.
+    notes: Vec<String>,
     /// Directories that `commit` created, outermost first.
     created_dirs: Vec<PathBuf>,
 }
@@ -131,9 +134,14 @@ fn symlink(_link: &Path, _path: &Path) -> io::Result<()> {
 
 impl Plan {
     /// Works out every change the hunks make, with later hunks seeing the result of earlier ones.
-    pub fn compute(hunks: &[Hunk], cwd: &Path) -> Result<Plan, ApplyPatchError> {
+    pub fn compute(
+        hunks: &[Hunk],
+        cwd: &Path,
+        matching: Matching,
+    ) -> Result<Plan, ApplyPatchError> {
         let mut plan = Plan {
             changes: Vec::new(),
+            notes: Vec::new(),
             created_dirs: Vec::new(),
         };
         for hunk in hunks {
@@ -155,12 +163,14 @@ impl Plan {
                     let index = plan.change_for(path, cwd, "update")?;
                     let original = String::from_utf8(plan.existing(index, "update")?.to_vec())
                         .map_err(|_| does_not_apply(path, "cannot update, not valid UTF-8"))?;
-                    let new_contents = derive_new_contents_from_chunks(
+                    let (new_contents, notes) = derive_new_contents_from_chunks(
                         &path.display().to_string(),
                         &original,
                         chunks,
-                    )?
-                    .into_bytes();
+                        matching,
+                    )?;
+                    let new_contents = new_contents.into_bytes();
+                    plan.notes.extend(notes);
                     match move_path {
                         Some(dest) => {
                             plan.changes[index].after = None;
@@ -239,6 +249,10 @@ impl Plan {
 
     pub fn changes(&self) -> &[FileChange] {
         &self.changes
+    }
+
+    pub fn notes(&self) -> &[String] {
+        &self.notes
     }
 
     /// Writes every change, or leaves every file as it was.

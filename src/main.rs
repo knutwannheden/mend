@@ -10,11 +10,11 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use patchwork::ApplyPatchError;
+use patchwork::Matching;
 use patchwork::ParseError;
 use patchwork::Plan;
 
-const USAGE: &str =
-    "Usage: patchwork [-C <dir>] [--check] [--diff] [--then <command> [--revert]] [PATCH]";
+const USAGE: &str = "Usage: patchwork [-C <dir>] [--check] [--diff] [--fragment] [--all] [--then <command> [--revert]] [PATCH]";
 
 const HELP: &str = "\
 Applies a patch in the Codex apply_patch format, read from stdin or from PATCH.
@@ -69,6 +69,10 @@ Options:
   -C <dir>          Resolve the relative paths in the patch against <dir>
   --check           Report what the patch would change without writing anything
   --diff            Print a unified diff of the changes instead of one status line per file
+  --fragment        Let a chunk of one `-` and one `+` line replace part of a line when no
+                    whole line matches; the part must occur once where it is looked for
+  --all             Let a chunk that matches several places change all of them; stderr
+                    then names the lines
   --then <command>  Run <command> with `sh -c` once the patch is applied, keeping the edits if it fails
   --revert          With --then: restore every file when <command> has finished or is interrupted
   -h, --help        Print this help
@@ -96,6 +100,8 @@ struct Options {
     diff: bool,
     then: Option<String>,
     revert: bool,
+    fragment: bool,
+    all: bool,
     dir: Option<String>,
     patch: Option<String>,
 }
@@ -157,6 +163,8 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Options>,
             "--check" => options.check = true,
             "--diff" => options.diff = true,
             "--revert" => options.revert = true,
+            "--fragment" => options.fragment = true,
+            "--all" => options.all = true,
             "-C" => options.dir = Some(args.next().ok_or("-C needs a directory")?),
             "--then" => {
                 let command = args.next().ok_or("--then needs a command")?;
@@ -199,7 +207,11 @@ fn run(patch: &str, options: Options) -> Result<ExitCode, ApplyPatchError> {
         Some(dir) => cwd.join(dir),
         None => cwd,
     };
-    let mut plan = Plan::compute(&hunks, &base)?;
+    let matching = Matching {
+        fragments: options.fragment,
+        all: options.all,
+    };
+    let mut plan = Plan::compute(&hunks, &base, matching)?;
     // Registered before the first write, so no signal can end the process with files left changed.
     let signal = match options.revert {
         true => Some(watch_signals().map_err(io_error("Failed to watch for signals"))?),
@@ -223,6 +235,9 @@ fn run(patch: &str, options: Options) -> Result<ExitCode, ApplyPatchError> {
     }
     let _ = stdout.flush();
     drop(stdout);
+    for note in plan.notes() {
+        eprintln!("{note}");
+    }
 
     let Some(command) = options.then else {
         return Ok(ExitCode::SUCCESS);
