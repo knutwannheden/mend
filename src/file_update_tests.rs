@@ -127,6 +127,21 @@ fn chunk_matching_nothing_reports_the_closest_place_and_its_first_difference() {
 }
 
 #[test]
+fn long_lines_that_differ_are_cut_down_to_the_part_that_differs() {
+    let (before, after) = ("word ".repeat(40), " tail".repeat(40));
+    assert_eq!(
+        error(
+            &format!("{before}OMEGX{after}\n"),
+            &format!("@@\n-{before}ALPHA{after}\n+x")
+        ),
+        "f.txt: chunk 1 of 1 matches nothing\n  \
+         closest is at line 1 (0 of 1 lines match); line 1 differs at column 201:\n    \
+         patch: …word word word word word word ALPHA tail tail tail tail tail tail…\n    \
+         file:  …word word word word word word OMEGX tail tail tail tail tail tail…"
+    );
+}
+
+#[test]
 fn chunk_matching_only_above_its_search_start_is_reported_as_out_of_order() {
     assert_eq!(
         error("a\nb\nc\n", "@@\n-c\n+C\n@@\n-a\n+A"),

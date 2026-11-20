@@ -180,18 +180,59 @@ fn closest_place(lines: &[String], pattern: &[String]) -> Option<String> {
     };
     let equal = (0..pattern.len()).filter(|&offset| same(offset)).count();
     let differs = (0..pattern.len()).find(|&offset| !same(offset))?;
+    let file_line = lines.get(start + differs);
+    let (column, patch_shown, file_shown) =
+        match file_line.and_then(|line| differing_part(&pattern[differs], line)) {
+            Some((column, patch_part, file_part)) => {
+                (format!(" at column {column}"), patch_part, file_part)
+            }
+            None => (
+                String::new(),
+                pattern[differs].clone(),
+                file_line.map_or("<end of file>".to_string(), String::clone),
+            ),
+        };
     Some(format!(
-        "closest is at line {} ({equal} of {} lines match); line {} differs:\n    \
-         patch: {}\n    \
-         file:  {}",
+        "closest is at line {} ({equal} of {} lines match); line {} differs{column}:\n    \
+         patch: {patch_shown}\n    \
+         file:  {file_shown}",
         start + 1,
         pattern.len(),
         start + differs + 1,
-        pattern[differs],
-        lines
-            .get(start + differs)
-            .map_or("<end of file>", String::as_str)
     ))
+}
+
+/// Cuts two long lines down to the stretch where they differ and a little of what surrounds
+/// it, and gives the column where that stretch starts. Returns `None` for lines short enough
+/// to compare by eye.
+fn differing_part(patch_line: &str, file_line: &str) -> Option<(usize, String, String)> {
+    const LONG_LINE: usize = 120;
+    const KEPT_AROUND: usize = 30;
+
+    let (patch, file): (Vec<char>, Vec<char>) =
+        (patch_line.chars().collect(), file_line.chars().collect());
+    if patch.len().max(file.len()) <= LONG_LINE {
+        return None;
+    }
+    let prefix = patch.iter().zip(&file).take_while(|(a, b)| a == b).count();
+    let suffix = patch
+        .iter()
+        .rev()
+        .zip(file.iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count()
+        .min(patch.len().min(file.len()) - prefix);
+    let from = prefix.saturating_sub(KEPT_AROUND);
+    let part = |line: &[char]| {
+        let to = line.len() - suffix.saturating_sub(KEPT_AROUND);
+        let shown: String = line[from..to].iter().collect();
+        let (before, after) = (
+            if from > 0 { "…" } else { "" },
+            if to < line.len() { "…" } else { "" },
+        );
+        format!("{before}{shown}{after}")
+    };
+    Some((prefix + 1, part(&patch), part(&file)))
 }
 
 /// The share of the longer line that the two lines have in common at their start and end.
