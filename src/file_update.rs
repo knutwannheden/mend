@@ -27,7 +27,8 @@ pub(crate) fn derive_new_contents_from_chunks(
 /// new lines, given the patch `chunks`. Each replacement is returned as
 /// `(start_index, old_len, new_lines)`.
 ///
-/// Every chunk has to match exactly one place at or after the end of the chunk before it.
+/// Every chunk has to match exactly one place. It is looked for below the chunk before it
+/// first, and in the whole file when nothing matches there.
 fn compute_replacements(
     original_lines: &[String],
     path: &str,
@@ -35,27 +36,28 @@ fn compute_replacements(
 ) -> Result<Vec<Replacement>, ApplyPatchError> {
     let mut replacements: Vec<Replacement> = Vec::new();
     let mut line_index: usize = 0;
+    // The lines each chunk has matched so far, as (start, length).
+    let mut matched: Vec<(usize, usize)> = Vec::new();
 
     for (chunk_index, chunk) in chunks.iter().enumerate() {
         let chunk_label = format!("{path}: chunk {} of {}", chunk_index + 1, chunks.len());
 
-        // An anchor only narrows the search, so its first occurrence is taken.
+        // An anchor only narrows the search, so its first occurrence is taken. One that lies
+        // above the search start is already satisfied, as for a chunk that repeats the
+        // anchor of the chunk before it.
         if let Some(ctx_line) = &chunk.change_context {
-            line_index = match seek_sequence(
-                original_lines,
-                std::slice::from_ref(ctx_line),
-                line_index,
-                /*eof*/ false,
-            ) {
+            let anchor = std::slice::from_ref(ctx_line);
+            line_index = match seek_sequence(original_lines, anchor, line_index, /*eof*/ false) {
                 Match::One(idx) => idx + 1,
                 Match::Many(found) => found[0] + 1,
+                Match::None
+                    if seek_sequence(original_lines, anchor, 0, /*eof*/ false) != Match::None =>
+                {
+                    line_index
+                }
                 Match::None => {
-                    let below = match line_index {
-                        0 => String::new(),
-                        line => format!(" below line {line}"),
-                    };
                     return Err(ApplyPatchError::DoesNotApply(format!(
-                        "{chunk_label}: anchor `@@ {ctx_line}` not found{below}"
+                        "{chunk_label}: anchor `@@ {ctx_line}` not found"
                     )));
                 }
             };
@@ -83,6 +85,10 @@ fn compute_replacements(
             found = seek_sequence(original_lines, pattern, line_index, chunk.is_end_of_file);
         }
 
+        let in_order = found != Match::None;
+        if !in_order {
+            found = seek_sequence(original_lines, pattern, 0, chunk.is_end_of_file);
+        }
         let start_idx = match found {
             Match::One(start_idx) => start_idx,
             Match::Many(found) => {
@@ -95,27 +101,27 @@ fn compute_replacements(
                 )));
             }
             Match::None => {
-                let earlier = match seek_sequence(original_lines, pattern, 0, chunk.is_end_of_file)
-                {
-                    Match::One(idx) => Some(idx),
-                    Match::Many(found) => Some(found[0]),
-                    Match::None => None,
-                };
-                let message = match (earlier, closest_place(original_lines, pattern)) {
-                    (Some(idx), _) => format!(
-                        "{chunk_label} matches only at line {}, above line {} where its search starts\n  \
-                         chunks and `@@` anchors must follow file order",
-                        idx + 1,
-                        line_index + 1
-                    ),
-                    (None, Some(closest)) => format!("{chunk_label} matches nothing\n  {closest}"),
-                    (None, None) => {
+                let reason = part_of_a_line(original_lines, pattern)
+                    .or_else(|| closest_place(original_lines, pattern));
+                return Err(ApplyPatchError::DoesNotApply(match reason {
+                    Some(reason) => format!("{chunk_label} matches nothing\n  {reason}"),
+                    None => {
                         format!("{chunk_label} matches nothing, and no similar lines were found")
                     }
-                };
-                return Err(ApplyPatchError::DoesNotApply(message));
+                }));
             }
         };
+        let end_idx = start_idx + pattern.len();
+        if matched
+            .iter()
+            .any(|&(start, len)| start_idx < start + len && start < end_idx)
+        {
+            return Err(ApplyPatchError::DoesNotApply(format!(
+                "{chunk_label} matches only line {}, which an earlier chunk already matched",
+                start_idx + 1
+            )));
+        }
+        matched.push((start_idx, pattern.len()));
 
         // Context lines occur in both sides of a patch chunk. Keep those
         // original lines in place so their exact contents and terminators
@@ -145,12 +151,44 @@ fn compute_replacements(
                 new_slice[new_start..].to_vec(),
             ));
         }
-        line_index = start_idx + pattern.len();
+        // A chunk found above the search start leaves the search where it was.
+        if in_order {
+            line_index = end_idx;
+        }
     }
 
     replacements.sort_by_key(|(index, _, _)| *index);
 
     Ok(replacements)
+}
+
+/// Names the one line that holds a chunk line without being equal to it, which is what a
+/// chunk gets when it gives only a fragment of a long line.
+fn part_of_a_line(lines: &[String], pattern: &[String]) -> Option<String> {
+    const SHOWN: usize = 60;
+
+    pattern
+        .iter()
+        .map(|line| line.trim())
+        .filter(|fragment| !fragment.is_empty())
+        .find_map(|fragment| {
+            if lines.iter().any(|line| line.trim() == fragment) {
+                return None;
+            }
+            let mut holders = (1..).zip(lines).filter(|(_, line)| line.contains(fragment));
+            let (number, _) = holders.next()?;
+            if holders.next().is_some() {
+                return None;
+            }
+            let mut shown: String = fragment.chars().take(SHOWN).collect();
+            if fragment.chars().count() > SHOWN {
+                shown.push('…');
+            }
+            Some(format!(
+                "its line `{shown}` is only part of line {number}\n  \
+                 a chunk line has to be the whole line"
+            ))
+        })
 }
 
 /// Describes where in `lines` the `pattern` comes closest to matching, or returns `None`

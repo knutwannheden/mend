@@ -50,8 +50,9 @@ Patch format:
   For a long shared prefix use -C <dir>, which leaves the heredoc quoted.
 
 Matching:
-  Each chunk must match exactly one place below the chunk before it. Whitespace
-  at the ends and starts of lines is ignored only when no place matches exactly.
+  Each chunk must match exactly one place. It is looked for below the chunk before
+  it, then in the whole file, so chunks need not follow file order. Whitespace at
+  the ends and starts of lines is ignored only when no place matches exactly.
   When a chunk matches no place or several, nothing is written and stderr names
   the candidate lines, or the closest place and its first differing line.
 

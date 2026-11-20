@@ -142,11 +142,50 @@ fn long_lines_that_differ_are_cut_down_to_the_part_that_differs() {
 }
 
 #[test]
-fn chunk_matching_only_above_its_search_start_is_reported_as_out_of_order() {
+fn chunk_above_the_previous_one_applies_where_it_matches_exactly_once() {
     assert_eq!(
-        error("a\nb\nc\n", "@@\n-c\n+C\n@@\n-a\n+A"),
-        "f.txt: chunk 2 of 2 matches only at line 1, above line 4 where its search starts\n  \
-         chunks and `@@` anchors must follow file order"
+        updated("a\nb\nc\n", "@@\n-c\n+C\n@@\n-a\n+A").unwrap(),
+        "A\nb\nC\n"
+    );
+
+    assert_eq!(
+        error("a\nb\n", "@@\n-a\n+A\n@@\n-a\n+AA"),
+        "f.txt: chunk 2 of 2 matches only line 1, which an earlier chunk already matched"
+    );
+
+    assert_eq!(
+        error("x\ny\nx\nz\n", "@@\n-z\n+Z\n@@\n-x\n+X"),
+        "f.txt: chunk 2 of 2 matches 2 places, at lines 1, 3\n  \
+         add context lines or an `@@` anchor line so that it matches only one"
+    );
+}
+
+#[test]
+fn anchor_above_the_previous_chunk_leaves_the_search_where_it_is() {
+    assert_eq!(
+        updated(
+            "class X {\n    one = 1;\n    two = 2;\n}\n",
+            "@@ class X {\n-    one = 1;\n+    one = 10;\n@@ class X {\n-    two = 2;\n+    two = 20;"
+        )
+        .unwrap(),
+        "class X {\n    one = 10;\n    two = 20;\n}\n"
+    );
+}
+
+#[test]
+fn chunk_line_that_is_only_part_of_one_file_line_is_pointed_out() {
+    let long = format!(
+        "- [Index](f.md) — {}and the tail that changes",
+        "earlier words ".repeat(12)
+    );
+    assert_eq!(
+        error(
+            &format!("{long}\nshort line\n"),
+            "@@\n-and the tail that changes\n+and the tail that changed"
+        ),
+        "f.txt: chunk 1 of 1 matches nothing\n  \
+         its line `and the tail that changes` is only part of line 1\n  \
+         a chunk line has to be the whole line"
     );
 }
 
@@ -159,6 +198,6 @@ fn missing_anchor_is_reported() {
 
     assert_eq!(
         error("a\nb\n", "@@\n-a\n+A\n@@ def missing():\n-b\n+B"),
-        "f.txt: chunk 2 of 2: anchor `@@ def missing():` not found below line 1"
+        "f.txt: chunk 2 of 2: anchor `@@ def missing():` not found"
     );
 }

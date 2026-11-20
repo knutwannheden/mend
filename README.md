@@ -71,7 +71,7 @@ A move prints `D` for the source and `A` or `M` for the destination. A path whos
 
 ## Matching
 
-Each chunk of an `Update File` hunk has to match exactly one place. Its lines are searched from the end of the previous chunk, or from its `@@` anchor line when it has one. Lines are compared exactly first, then ignoring trailing whitespace, then ignoring leading and trailing whitespace, then with typographic punctuation folded to ASCII. The strictest comparison that matches anywhere decides.
+Each chunk of an `Update File` hunk has to match exactly one place. Its lines are searched from the end of the previous chunk, or from its `@@` anchor line when it has one. When nothing matches there, the whole file is searched, so a chunk may come before the previous one in the file, and may repeat its anchor. Lines are compared exactly first, then ignoring trailing whitespace, then ignoring leading and trailing whitespace, then with typographic punctuation folded to ASCII. The strictest comparison that matches anywhere decides.
 
 A chunk that matches several places is rejected with their line numbers.
 
@@ -112,6 +112,7 @@ src/main.rs: chunk 2 of 3 matches nothing
 
 - A patch that fails leaves no file changed. Codex writes each file as it goes.
 - A chunk that matches several places is an error. Codex edits the first.
+- Chunks of one file need not be in file order, and several chunks may name the same `@@` anchor. Codex rejects both.
 - Standard output has no `Success.` header, and failures have distinct exit statuses.
 - A patch has to reach the command through a shell. The heredoc text `<<'EOF'` passed literally as an argument is not unwrapped, and the `*** Environment ID:` line is not accepted.
 

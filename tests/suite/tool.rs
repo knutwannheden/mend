@@ -88,8 +88,7 @@ fn test_apply_patch_cli_rejects_overlapping_end_of_file_chunks() -> anyhow::Resu
     run_apply_patch_in_dir(tmp.path(), patch)?
         .failure()
         .stderr(
-            "overlapping.txt: chunk 2 of 2 matches only at line 1, above line 2 where its search starts\n  \
-             chunks and `@@` anchors must follow file order\n",
+            "overlapping.txt: chunk 2 of 2 matches only line 1, which an earlier chunk already matched\n",
         );
 
     assert_eq!(fs::read_to_string(target_path)?, "one\n");
