@@ -16,10 +16,8 @@ use crate::parser::UpdateFileChunk;
 use Hunk::*;
 use ParseError::*;
 
-const ENVIRONMENT_ID_MARKER: &str = "*** Environment ID:";
-
 #[derive(Debug, Default, Clone)]
-pub struct StreamingPatchParser {
+pub(crate) struct StreamingPatchParser {
     line_buffer: String,
     state: StreamingParserState,
     line_number: usize,
@@ -29,7 +27,6 @@ pub struct StreamingPatchParser {
 struct StreamingParserState {
     mode: StreamingParserMode,
     hunks: Vec<Hunk>,
-    environment_id: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -46,10 +43,6 @@ enum StreamingParserMode {
 }
 
 impl StreamingPatchParser {
-    pub fn environment_id(&self) -> Option<&str> {
-        self.state.environment_id.as_deref()
-    }
-
     fn ensure_update_hunk_is_not_empty(&self, line: &str) -> Result<(), ParseError> {
         if let Some(UpdateFile { path, chunks, .. }) = self.state.hunks.last() {
             if chunks.is_empty()
@@ -82,23 +75,6 @@ impl StreamingPatchParser {
     }
 
     fn handle_hunk_headers_and_end_patch(&mut self, trimmed: &str) -> Result<bool, ParseError> {
-        if matches!(self.state.mode, StreamingParserMode::StartedPatch)
-            && let Some(environment_id) = trimmed.strip_prefix(ENVIRONMENT_ID_MARKER)
-        {
-            if self.state.environment_id.is_some() {
-                return Err(InvalidPatchError(
-                    "apply_patch environment_id cannot be specified more than once".to_string(),
-                ));
-            }
-            let environment_id = environment_id.trim();
-            if environment_id.is_empty() {
-                return Err(InvalidPatchError(
-                    "apply_patch environment_id cannot be empty".to_string(),
-                ));
-            }
-            self.state.environment_id = Some(environment_id.to_string());
-            return Ok(true);
-        }
         if trimmed == END_PATCH_MARKER {
             self.ensure_update_hunk_is_not_empty(trimmed)?;
             self.state.mode = StreamingParserMode::EndedPatch;
@@ -136,7 +112,7 @@ impl StreamingPatchParser {
         Ok(false)
     }
 
-    pub fn push_delta(&mut self, delta: &str) -> Result<Vec<Hunk>, ParseError> {
+    pub(crate) fn push_delta(&mut self, delta: &str) -> Result<Vec<Hunk>, ParseError> {
         for ch in delta.chars() {
             if ch == '\n' {
                 let mut line = std::mem::take(&mut self.line_buffer);
@@ -151,7 +127,7 @@ impl StreamingPatchParser {
         Ok(self.state.hunks.clone())
     }
 
-    pub fn finish(&mut self) -> Result<Vec<Hunk>, ParseError> {
+    pub(crate) fn finish(&mut self) -> Result<Vec<Hunk>, ParseError> {
         if !self.line_buffer.is_empty() {
             let line = std::mem::take(&mut self.line_buffer);
             self.line_number += 1;
@@ -448,45 +424,6 @@ mod tests {
                     path: PathBuf::from("src/two.txt"),
                 },
             ])
-        );
-    }
-
-    #[test]
-    fn test_streaming_patch_parser_environment_id_mode() {
-        let patch = "\
-*** Begin Patch
-*** Environment ID: remote
-*** Add File: src/hello.txt
-+hello
-*** End Patch
-";
-
-        let mut parser = StreamingPatchParser::default();
-        assert_eq!(
-            parser.push_delta(patch),
-            Ok(vec![AddFile {
-                path: PathBuf::from("src/hello.txt"),
-                contents: "hello\n".to_string(),
-            }])
-        );
-        assert_eq!(parser.environment_id(), Some("remote"));
-
-        let mut parser = StreamingPatchParser::default();
-        assert_eq!(
-            parser.push_delta(
-                "*** Begin Patch\n*** Environment ID: first\n*** Environment ID: second\n",
-            ),
-            Err(InvalidPatchError(
-                "apply_patch environment_id cannot be specified more than once".to_string(),
-            ))
-        );
-
-        let mut parser = StreamingPatchParser::default();
-        assert_eq!(
-            parser.push_delta("*** Begin Patch\n*** Environment ID:   \n"),
-            Err(InvalidPatchError(
-                "apply_patch environment_id cannot be empty".to_string(),
-            ))
         );
     }
 

@@ -1,5 +1,4 @@
 use anyhow::Context;
-use codex_utils_cargo_bin::find_resource;
 use pretty_assertions::assert_eq;
 use std::collections::BTreeMap;
 use std::fs;
@@ -10,11 +9,8 @@ use tempfile::tempdir;
 
 #[test]
 fn test_apply_patch_scenarios() -> anyhow::Result<()> {
-    let scenarios_marker = find_resource!("tests/fixtures/scenarios/.gitattributes")?;
-    let scenarios_dir = scenarios_marker
-        .parent()
-        .context("scenario marker should have a parent directory")?;
-    for scenario in fs::read_dir(scenarios_dir)
+    let scenarios_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/scenarios");
+    for scenario in fs::read_dir(&scenarios_dir)
         .with_context(|| format!("failed to read {}", scenarios_dir.display()))?
     {
         let scenario = scenario?;
@@ -46,7 +42,7 @@ fn run_apply_patch_scenario(dir: &Path) -> anyhow::Result<()> {
     // Run apply_patch in the temporary directory. We intentionally do not assert
     // on the exit status here; the scenarios are specified purely in terms of
     // final filesystem state, which we compare below.
-    Command::new(codex_utils_cargo_bin::cargo_bin("apply_patch")?)
+    Command::new(env!("CARGO_BIN_EXE_patchwork"))
         .arg(patch)
         .current_dir(tmp.path())
         .output()

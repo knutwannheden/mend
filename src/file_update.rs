@@ -1,11 +1,4 @@
-use codex_exec_server::ExecutorFileSystem;
-use codex_exec_server::FileSystemSandboxContext;
-use codex_exec_server::ReadFileOptions;
-use codex_utils_path_uri::PathUri;
-use similar::TextDiff;
-
 use crate::ApplyPatchError;
-use crate::IoError;
 use crate::UpdateFileChunk;
 use crate::seek_sequence;
 use crate::text_file::Replacement;
@@ -15,43 +8,18 @@ use crate::text_file::SourceFile;
 #[path = "file_update_tests.rs"]
 mod tests;
 
-pub(crate) struct AppliedPatch {
-    pub(crate) original_contents: String,
-    pub(crate) new_contents: String,
-}
-
-/// Return *only* the new file contents (joined into a single `String`) after
-/// applying the chunks to the file at `path`.
-pub(crate) async fn derive_new_contents_from_chunks(
-    path: &PathUri,
+/// Returns the contents that result from applying `chunks` to `original_contents`.
+/// `path` only labels error messages.
+pub(crate) fn derive_new_contents_from_chunks(
+    path: &str,
+    original_contents: &str,
     chunks: &[UpdateFileChunk],
-    fs: &dyn ExecutorFileSystem,
-    follow_symlinks: bool,
-    sandbox: Option<&FileSystemSandboxContext>,
-) -> std::result::Result<AppliedPatch, ApplyPatchError> {
-    let original_contents = fs
-        .read_file_text(path, ReadFileOptions { follow_symlinks }, sandbox)
-        .await
-        .map_err(|err| {
-            ApplyPatchError::IoError(IoError {
-                context: format!(
-                    "Failed to read file to update {}",
-                    path.inferred_native_path_string()
-                ),
-                source: err,
-            })
-        })?;
-
-    let path_text = path.inferred_native_path_string();
-    let mut source_file = SourceFile::parse(&original_contents);
+) -> Result<String, ApplyPatchError> {
+    let mut source_file = SourceFile::parse(original_contents);
     let original_lines = source_file.line_texts();
-    let replacements = compute_replacements(&original_lines, &path_text, chunks)?;
+    let replacements = compute_replacements(&original_lines, path, chunks)?;
     source_file.apply_replacements(&replacements);
-    let new_contents = source_file.into_contents();
-    Ok(AppliedPatch {
-        original_contents,
-        new_contents,
-    })
+    Ok(source_file.into_contents())
 }
 
 /// Compute a list of replacements needed to transform `original_lines` into the
@@ -163,42 +131,4 @@ fn compute_replacements(
     replacements.sort_by_key(|(index, _, _)| *index);
 
     Ok(replacements)
-}
-
-/// Intended result of a file update for apply_patch.
-#[derive(Debug, Eq, PartialEq)]
-pub struct ApplyPatchFileUpdate {
-    pub(crate) unified_diff: String,
-    pub(crate) original_content: String,
-    pub(crate) content: String,
-}
-
-pub async fn unified_diff_from_chunks(
-    path: &PathUri,
-    chunks: &[UpdateFileChunk],
-    fs: &dyn ExecutorFileSystem,
-    sandbox: Option<&FileSystemSandboxContext>,
-) -> std::result::Result<ApplyPatchFileUpdate, ApplyPatchError> {
-    unified_diff_from_chunks_with_context(path, chunks, /*context*/ 1, fs, sandbox).await
-}
-
-pub async fn unified_diff_from_chunks_with_context(
-    path: &PathUri,
-    chunks: &[UpdateFileChunk],
-    context: usize,
-    fs: &dyn ExecutorFileSystem,
-    sandbox: Option<&FileSystemSandboxContext>,
-) -> std::result::Result<ApplyPatchFileUpdate, ApplyPatchError> {
-    let AppliedPatch {
-        original_contents,
-        new_contents,
-    } = derive_new_contents_from_chunks(path, chunks, fs, /*follow_symlinks*/ true, sandbox)
-        .await?;
-    let text_diff = TextDiff::from_lines(&original_contents, &new_contents);
-    let unified_diff = text_diff.unified_diff().context_radius(context).to_string();
-    Ok(ApplyPatchFileUpdate {
-        unified_diff,
-        original_content: original_contents,
-        content: new_contents,
-    })
 }

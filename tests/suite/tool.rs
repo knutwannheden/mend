@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use tempfile::tempdir;
 
 fn run_apply_patch_in_dir(dir: &Path, patch: &str) -> anyhow::Result<assert_cmd::assert::Assert> {
-    let mut cmd = Command::new(codex_utils_cargo_bin::cargo_bin("apply_patch")?);
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_patchwork"));
     cmd.current_dir(dir);
     Ok(cmd.arg(patch).assert())
 }
@@ -32,7 +32,7 @@ fn assert_apply_patch_updates_file(
 }
 
 fn apply_patch_command(dir: &Path) -> anyhow::Result<Command> {
-    let mut cmd = Command::new(codex_utils_cargo_bin::cargo_bin("apply_patch")?);
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_patchwork"));
     cmd.current_dir(dir);
     Ok(cmd)
 }
@@ -392,5 +392,41 @@ fn test_apply_patch_cli_failure_after_partial_success_leaves_changes() -> anyhow
 
     assert_eq!(fs::read_to_string(&new_file)?, "hello\n");
 
+    Ok(())
+}
+
+#[test]
+fn test_apply_patch_cli_accepts_relative_and_absolute_paths() -> anyhow::Result<()> {
+    let tmp = tempdir()?;
+    let root = tmp.path().canonicalize()?;
+    let absolute_add = root.join("absolute-add.txt");
+    let absolute_delete = root.join("absolute-delete.txt");
+    let absolute_update = root.join("absolute-update.txt");
+    fs::write(&absolute_delete, "delete absolute\n")?;
+    fs::write(&absolute_update, "absolute old\n")?;
+    fs::write(root.join("relative-update.txt"), "relative old\n")?;
+
+    let patch = format!(
+        "*** Begin Patch\n*** Add File: {}\n+absolute add\n*** Delete File: {}\n*** Update File: relative-update.txt\n@@\n-relative old\n+relative new\n*** Update File: {}\n@@\n-absolute old\n+absolute new\n*** End Patch",
+        absolute_add.display(),
+        absolute_delete.display(),
+        absolute_update.display(),
+    );
+    run_apply_patch_in_dir(&root, &patch)?
+        .success()
+        .stdout(format!(
+            "Success. Updated the following files:\nA {}\nM relative-update.txt\nM {}\nD {}\n",
+            absolute_add.display(),
+            absolute_update.display(),
+            absolute_delete.display(),
+        ));
+
+    assert_eq!(fs::read_to_string(&absolute_add)?, "absolute add\n");
+    assert!(!absolute_delete.exists());
+    assert_eq!(
+        fs::read_to_string(root.join("relative-update.txt"))?,
+        "relative new\n"
+    );
+    assert_eq!(fs::read_to_string(&absolute_update)?, "absolute new\n");
     Ok(())
 }
