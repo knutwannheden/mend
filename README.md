@@ -114,12 +114,13 @@ src/main.rs: chunk 2 of 3 matches nothing
 *** End Patch
 ```
 
-`*** Move to:`, the `@@` anchor and `*** End of File` are optional. A chunk without removed or context lines appends its added lines to the end of the file. `Add File` on a path that exists replaces its whole contents. `tests/fixtures/scenarios` holds one directory per behavior, each with the input files, the patch and the expected result.
+`*** Move to:`, the `@@` anchor and `*** End of File` are optional. A chunk without removed or context lines puts its added lines right after its `@@` anchor line, or at the end of the file when it has no anchor or ends with `*** End of File`. `Add File` on a path that exists replaces its whole contents. `tests/fixtures/scenarios` holds one directory per behavior, each with the input files, the patch and the expected result.
 
 ## Differences from Codex `apply_patch`
 
 - A patch that fails leaves no file changed. Codex writes each file as it goes.
 - A chunk that matches several places is an error. Codex edits the first.
+- A chunk of only `+` lines under an `@@` anchor goes right after the anchor line. Codex appends it to the end of the file.
 - Chunks of one file need not be in file order, and several chunks may name the same `@@` anchor. Codex rejects both.
 - Standard output has no `Success.` header, and failures have distinct exit statuses.
 - A patch has to reach the command through a shell. The heredoc text `<<'EOF'` passed literally as an argument is not unwrapped, and the `*** Environment ID:` line is not accepted.

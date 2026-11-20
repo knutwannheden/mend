@@ -45,7 +45,8 @@ Patch format:
   *** End of File          After a chunk: it must match at the end of the file
 
   A chunk line starts with a space (context), `-` (removed) or `+` (added).
-  A chunk of only `+` lines is appended to the end of the file.
+  A chunk of only `+` lines goes right after its @@ anchor line, or at the end of the
+  file when it has no anchor or ends with *** End of File.
   A path is absolute or relative to the current directory, inside a repository or not.
   For a long shared prefix use -C <dir>, which leaves the heredoc quoted.
 

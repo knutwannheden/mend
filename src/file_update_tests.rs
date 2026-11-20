@@ -380,3 +380,26 @@ fn byte_order_mark_stays_in_place_and_out_of_the_first_line() {
         "\u{feff}using System.IO;\nclass A {}\n"
     );
 }
+
+#[test]
+fn addition_only_chunk_goes_right_after_its_anchor() {
+    let file = "class A {\n  int x;\n}\nclass B {\n}\n";
+    assert_eq!(
+        updated(file, "@@ class A {\n+  int y;").unwrap(),
+        "class A {\n  int y;\n  int x;\n}\nclass B {\n}\n"
+    );
+
+    assert_eq!(
+        updated(
+            file,
+            "@@ class A {\n-  int x;\n+  int z;\n@@ class A {\n+  int y;"
+        )
+        .unwrap(),
+        "class A {\n  int y;\n  int z;\n}\nclass B {\n}\n"
+    );
+
+    assert_eq!(
+        updated(file, "@@ class A {\n+  int y;\n*** End of File").unwrap(),
+        "class A {\n  int x;\n}\nclass B {\n}\n  int y;\n"
+    );
+}

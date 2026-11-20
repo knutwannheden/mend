@@ -60,28 +60,37 @@ fn compute_replacements(
 
         // An anchor only narrows the search, so its first occurrence is taken. One that lies
         // above the search start is already satisfied, as for a chunk that repeats the
-        // anchor of the chunk before it.
+        // anchor of the chunk before it. Then its nearest occurrence above counts.
+        let mut anchor_line = None;
         if let Some(ctx_line) = &chunk.change_context {
             let anchor = std::slice::from_ref(ctx_line);
-            line_index = match seek_sequence(original_lines, anchor, line_index, /*eof*/ false) {
-                Match::One(idx) => idx + 1,
-                Match::Many(found) => found[0] + 1,
-                Match::None
-                    if seek_sequence(original_lines, anchor, 0, /*eof*/ false) != Match::None =>
-                {
-                    line_index
+            match seek_sequence(original_lines, anchor, line_index, /*eof*/ false) {
+                Match::One(idx) => {
+                    anchor_line = Some(idx);
+                    line_index = idx + 1;
                 }
-                Match::None => {
-                    return Err(ApplyPatchError::DoesNotApply(format!(
-                        "{chunk_label}: anchor `@@ {ctx_line}` not found"
-                    )));
+                Match::Many(found) => {
+                    anchor_line = Some(found[0]);
+                    line_index = found[0] + 1;
                 }
-            };
+                Match::None => match seek_sequence(original_lines, anchor, 0, /*eof*/ false) {
+                    Match::One(idx) => anchor_line = Some(idx),
+                    Match::Many(found) => anchor_line = found.last().copied(),
+                    Match::None => {
+                        return Err(ApplyPatchError::DoesNotApply(format!(
+                            "{chunk_label}: anchor `@@ {ctx_line}` not found"
+                        )));
+                    }
+                },
+            }
         }
 
         if chunk.old_lines.is_empty() {
-            let end = original_lines.len();
-            replacements.push((end, (end, 0, chunk.new_lines.clone())));
+            let at = match anchor_line {
+                Some(line) if !chunk.is_end_of_file => line + 1,
+                _ => original_lines.len(),
+            };
+            replacements.push((at, (at, 0, chunk.new_lines.clone())));
             continue;
         }
 
@@ -260,9 +269,10 @@ fn compute_replacements(
         }
     }
 
-    // Two chunks that touch can each have a replacement at the line where they meet. The
-    // upper chunk's has to come first, whichever of the two the patch names first.
-    replacements.sort_by_key(|(chunk_start, (index, _, _))| (*index, *chunk_start));
+    // Replacements that start at the same line are applied with insertions first, then by
+    // where their chunk matched, so that lines added there end up above the lines that
+    // replace it, whichever chunk the patch names first.
+    replacements.sort_by_key(|(chunk_start, (index, old_len, _))| (*index, *old_len, *chunk_start));
 
     let replacements = replacements
         .into_iter()
