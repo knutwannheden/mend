@@ -78,6 +78,26 @@ fn revert_restores_the_files_whether_the_command_fails_or_succeeds() -> anyhow::
 }
 
 #[test]
+fn revert_leaves_a_file_alone_that_changed_after_the_patch() -> anyhow::Result<()> {
+    let tmp = tempdir()?;
+    fs::write(tmp.path().join("f.txt"), "old\n")?;
+
+    patchwork(tmp.path())
+        .args(["--revert", "--then", "echo later >> f.txt"])
+        .write_stdin(PATCH)
+        .assert()
+        .code(4)
+        .stderr("could not restore f.txt: it changed after the patch was applied\n");
+
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("f.txt"))?,
+        "new\nlater\n"
+    );
+    assert!(!tmp.path().join("sub").exists());
+    Ok(())
+}
+
+#[test]
 fn revert_restores_the_files_when_terminated_while_the_command_runs() -> anyhow::Result<()> {
     let tmp = tempdir()?;
     let file = tmp.path().join("f.txt");

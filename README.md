@@ -63,7 +63,7 @@ A move prints `D` for the source and `A` or `M` for the destination. A path whos
 | 1 | The patch does not fit the files. A chunk matched no place or several, or a named file is missing. Nothing was written. |
 | 2 | The patch or the command line is malformed. Nothing was written. |
 | 3 | The `--then` command failed. The edits are kept unless `--revert` was given. |
-| 4 | A file could not be read or written. No file was left changed. |
+| 4 | A file could not be read or written, and no file was left changed. Or `--revert` left a file alone because it changed after the patch was applied. |
 | 128 + n | With `--revert`, signal `n` arrived while the command ran. The files were restored. |
 
 ## Matching

@@ -72,7 +72,7 @@ Exit status:
   1  the patch does not fit the files; nothing was written
   2  the patch or the command line is malformed; nothing was written
   3  the --then command failed; the edits are kept unless --revert was given
-  4  a file could not be read or written; no file was left changed
+  4  a file could not be read, written or restored; stderr names it
 ";
 
 const DOES_NOT_APPLY: u8 = 1;

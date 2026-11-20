@@ -75,6 +75,15 @@ impl FileChange {
     }
 
     fn undo(&self) -> io::Result<()> {
+        // Whatever changed the path since the patch was applied would be lost by restoring it.
+        let current = match fs::read(self.write_path()) {
+            Ok(contents) => Some(contents),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error),
+        };
+        if current != self.after {
+            return Err(io::Error::other("it changed after the patch was applied"));
+        }
         match (&self.before, &self.link) {
             (None, _) => match fs::remove_file(self.write_path()) {
                 Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
