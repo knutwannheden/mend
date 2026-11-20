@@ -13,19 +13,58 @@ use patchwork::ApplyPatchError;
 use patchwork::ParseError;
 use patchwork::Plan;
 
-const USAGE: &str = "\
-Usage: patchwork [--check] [--diff] [--then <command> [--revert]] [PATCH]
+const USAGE: &str = "Usage: patchwork [--check] [--diff] [--then <command> [--revert]] [PATCH]";
 
-Applies a patch in the Codex apply_patch format, read from PATCH or from stdin.
+const HELP: &str = "\
+Applies a patch in the Codex apply_patch format, read from stdin or from PATCH.
 Either every file the patch names is changed, or none is.
+
+  patchwork <<'EOF' && make test
+  *** Begin Patch
+  *** Update File: src/config.py
+  @@ def load():
+  -    retries = 3
+  +    retries = 5
+  *** Add File: notes/retries.md
+  +Retries were raised to 5.
+  *** Delete File: notes/old.md
+  *** End Patch
+  EOF
+
+Patch format:
+  *** Update File: <path>  Changes a file through one or more chunks
+  *** Move to: <path>      Right after Update File: also renames the file
+  *** Add File: <path>     Creates a file from the `+` lines that follow
+  *** Delete File: <path>  Deletes a file
+  @@                       Starts a chunk
+  @@ <line>                Starts a chunk that is searched below <line>
+  *** End of File          After a chunk: it must match at the end of the file
+
+  A chunk line starts with a space (context), `-` (removed) or `+` (added).
+  A chunk of only `+` lines is appended to the end of the file.
+
+Matching:
+  Each chunk must match exactly one place below the chunk before it. Whitespace
+  at the ends and starts of lines is ignored only when no place matches exactly.
+  When a chunk matches no place or several, nothing is written and stderr names
+  the candidate lines, or the closest place and its first differing line.
+
+Running a command after the patch:
+  `patchwork <<'EOF' && <command>` runs <command> only when the patch applied.
+  For a long command, end the line with `&&` and write it after the closing EOF.
+  A command that merely follows on the next line runs even when the patch failed.
+  --then with --revert is for an edit that lasts one run, such as a mutation check.
 
 Options:
   --check           Report what the patch would change without writing anything
   --diff            Print a unified diff of the changes instead of one status line per file
-  --then <command>  Run <command> with `sh -c` once the patch is applied
-  --revert          With --then: restore every file when <command> has finished
+  --then <command>  Run <command> with `sh -c` once the patch is applied, keeping the edits if it fails
+  --revert          With --then: restore every file when <command> has finished or is interrupted
   -h, --help        Print this help
   -V, --version     Print the version
+
+Output:
+  One line per changed path on stdout: `A <path>`, `M <path>` or `D <path>`.
 
 Exit status:
   0  the patch applied
@@ -51,7 +90,7 @@ struct Options {
 
 fn main() -> ExitCode {
     let usage_error = |message: &str| {
-        eprintln!("{message}\n\n{USAGE}");
+        eprintln!("{message}\n{USAGE}\nRun `patchwork --help` for the patch format and examples.");
         ExitCode::from(MALFORMED)
     };
     let mut options = match parse_args(std::env::args().skip(1)) {
@@ -106,7 +145,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Options>,
                 options.then = Some(command);
             }
             "-h" | "--help" => {
-                print!("{USAGE}");
+                print!("{USAGE}\n\n{HELP}");
                 return Ok(None);
             }
             "-V" | "--version" => {

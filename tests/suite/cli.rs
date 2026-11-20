@@ -111,7 +111,12 @@ fn test_exit_status_distinguishes_a_patch_that_does_not_fit_from_a_malformed_one
         .current_dir(tmp.path())
         .arg("--frobnicate")
         .assert()
-        .code(2);
+        .code(2)
+        .stderr(
+            "Unknown option: --frobnicate\n\
+             Usage: patchwork [--check] [--diff] [--then <command> [--revert]] [PATCH]\n\
+             Run `patchwork --help` for the patch format and examples.\n",
+        );
 
     let empty = apply_patch_command()?
         .current_dir(tmp.path())
@@ -165,5 +170,16 @@ fn test_diff_prints_a_unified_diff_in_place_of_status_lines() -> anyhow::Result<
         );
 
     assert_eq!(fs::read_to_string(tmp.path().join("f.txt"))?, "1\ntwo\n");
+    Ok(())
+}
+
+#[test]
+fn test_help_shows_the_patch_format_and_how_to_chain_a_command() -> anyhow::Result<()> {
+    let help = apply_patch_command()?.arg("--help").output()?;
+    let stdout = String::from_utf8(help.stdout)?;
+
+    assert_eq!(help.status.code(), Some(0));
+    assert!(stdout.contains("*** Update File: <path>"), "{stdout}");
+    assert!(stdout.contains("patchwork <<'EOF' && "), "{stdout}");
     Ok(())
 }

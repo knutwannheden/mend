@@ -3,7 +3,7 @@
 `patchwork` applies a multi-file edit written in the `*** Begin Patch` format of [OpenAI Codex](https://github.com/openai/codex). Either every file the patch names is changed, or none is. It is a small synchronous binary for coding agents and scripts, derived from the `apply-patch` crate of Codex.
 
 ```sh
-patchwork --then './gradlew test' <<'EOF'
+patchwork <<'EOF' && ./gradlew test
 *** Begin Patch
 *** Update File: src/Greeter.java
 @@ class Greeter
@@ -35,7 +35,9 @@ The patch is read from the `PATCH` argument, or from stdin when there is none. A
 | `--then <command>` | Runs `<command>` with `sh -c` once the patch is applied. When the command fails the edits stay in place. |
 | `--revert` | With `--then`, restores every file when the command has finished, whether it failed or succeeded. |
 
-`--revert` is for an edit that should last for one run, such as a mutation check. The files are also restored when `patchwork` receives `SIGHUP`, `SIGINT` or `SIGTERM` while the command runs.
+To run a build or test only when the patch applied, chain it with `&&` on the heredoc line, as in the example above. A long command can follow the closing `EOF` when the heredoc line ends with `&&`. A command that merely sits on the next line runs even when the patch failed.
+
+`--then` is there for `--revert`, which makes an edit last for one run, such as a mutation check. The files are also restored when `patchwork` receives `SIGHUP`, `SIGINT` or `SIGTERM` while the command runs.
 
 ```sh
 patchwork --revert --then 'cargo test parser' < mutant.patch
