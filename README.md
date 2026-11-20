@@ -103,7 +103,7 @@ src/main.rs: chunk 2 of 3 matches nothing
 *** End Patch
 ```
 
-`*** Move to:`, the `@@` anchor and `*** End of File` are optional. A chunk without removed or context lines appends its added lines to the end of the file. `tests/fixtures/scenarios` holds one directory per behavior, each with the input files, the patch and the expected result.
+`*** Move to:`, the `@@` anchor and `*** End of File` are optional. A chunk without removed or context lines appends its added lines to the end of the file. `Add File` on a path that exists replaces its whole contents. `tests/fixtures/scenarios` holds one directory per behavior, each with the input files, the patch and the expected result.
 
 ## Differences from Codex `apply_patch`
 

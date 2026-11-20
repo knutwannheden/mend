@@ -34,7 +34,7 @@ Either every file the patch names is changed, or none is.
 Patch format:
   *** Update File: <path>  Changes a file through one or more chunks
   *** Move to: <path>      Right after Update File: also renames the file
-  *** Add File: <path>     Creates a file from the `+` lines that follow
+  *** Add File: <path>     Creates a file from the `+` lines that follow, or replaces all of an existing one
   *** Delete File: <path>  Deletes a file
   @@                       Starts a chunk
   @@ <line>                Starts a chunk that is searched below <line>
@@ -42,6 +42,7 @@ Patch format:
 
   A chunk line starts with a space (context), `-` (removed) or `+` (added).
   A chunk of only `+` lines is appended to the end of the file.
+  A path is absolute or relative to the current directory, inside a repository or not.
 
 Matching:
   Each chunk must match exactly one place below the chunk before it. Whitespace
