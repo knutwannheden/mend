@@ -90,9 +90,6 @@ fn snapshot_dir_recursive(
         };
         let rel = stripped.to_path_buf();
 
-        // Under Buck2, files in `__srcs` are often materialized as symlinks.
-        // Use `metadata()` (follows symlinks) so our fixture snapshots work
-        // under both Cargo and Buck2.
         let metadata = fs::metadata(&path)?;
         if metadata.is_dir() {
             entries.insert(rel.clone(), Entry::Dir);
@@ -111,7 +108,6 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> anyhow::Result<()> {
         let path = entry.path();
         let dest_path = dst.join(entry.file_name());
 
-        // See note in `snapshot_dir_recursive` about Buck2 symlink trees.
         let metadata = fs::metadata(&path)?;
         if metadata.is_dir() {
             fs::create_dir_all(&dest_path)?;

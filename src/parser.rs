@@ -23,7 +23,6 @@
 //! The parser below is a little more lenient than the explicit spec and allows for
 //! leading/trailing whitespace around patch markers.
 use crate::streaming_parser::StreamingPatchParser;
-use std::path::Path;
 use std::path::PathBuf;
 
 use thiserror::Error;
@@ -65,34 +64,6 @@ pub enum Hunk {
         /// should occur later in the file than the previous chunk.
         chunks: Vec<UpdateFileChunk>,
     },
-}
-
-impl Hunk {
-    /// Returns the file this hunk reads or creates, which for a rename hunk is its source.
-    pub fn resolve_path(&self, cwd: &Path) -> PathBuf {
-        let path = match self {
-            Hunk::UpdateFile { path, .. } => path,
-            Hunk::AddFile { .. } | Hunk::DeleteFile { .. } => self.path(),
-        };
-        cwd.join(path)
-    }
-
-    /// Returns the path affected by this hunk, using the move destination for rename hunks.
-    pub fn path(&self) -> &Path {
-        match self {
-            Hunk::AddFile { path, .. } => path,
-            Hunk::DeleteFile { path } => path,
-            Hunk::UpdateFile {
-                move_path: Some(path),
-                ..
-            } => path,
-            Hunk::UpdateFile {
-                path,
-                move_path: None,
-                ..
-            } => path,
-        }
-    }
 }
 
 #[cfg(test)]
