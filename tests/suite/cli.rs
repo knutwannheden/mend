@@ -199,6 +199,18 @@ fn test_help_shows_the_patch_format_and_how_to_chain_a_command() -> anyhow::Resu
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn test_argument_that_is_not_utf8_is_a_usage_error() -> anyhow::Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+
+    apply_patch_command()?
+        .arg(std::ffi::OsStr::from_bytes(b"\xff"))
+        .assert()
+        .code(2);
+    Ok(())
+}
+
 #[test]
 fn test_dash_c_resolves_patch_paths_against_a_directory() -> anyhow::Result<()> {
     let tmp = tempdir()?;

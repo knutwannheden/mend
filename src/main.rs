@@ -111,7 +111,14 @@ fn main() -> ExitCode {
         eprintln!("{message}\n{USAGE}\nRun `patchwork --help` for the patch format and examples.");
         ExitCode::from(MALFORMED)
     };
-    let mut options = match parse_args(std::env::args().skip(1)) {
+    let Ok(args) = std::env::args_os()
+        .skip(1)
+        .map(std::ffi::OsString::into_string)
+        .collect::<Result<Vec<String>, _>>()
+    else {
+        return usage_error("Arguments have to be valid UTF-8");
+    };
+    let mut options = match parse_args(args.into_iter()) {
         Ok(Some(options)) => options,
         Ok(None) => return ExitCode::SUCCESS,
         Err(message) => return usage_error(&message),
