@@ -114,7 +114,7 @@ src/main.rs: chunk 2 of 3 matches nothing
 *** End Patch
 ```
 
-`*** Move to:`, the `@@` anchor and `*** End of File` are optional. A chunk without removed or context lines puts its added lines right after its `@@` anchor line, or at the end of the file when it has no anchor or ends with `*** End of File`. `Add File` on a path that exists replaces its whole contents. `tests/fixtures/scenarios` holds one directory per behavior, each with the input files, the patch and the expected result.
+`*** Move to:`, the `@@` anchor and `*** End of File` are optional. An `@@` anchor gives a whole line, or just the start of exactly one line, such as a method signature up to its `(`. A chunk without removed or context lines puts its added lines right after its `@@` anchor line, or at the end of the file when it has no anchor or ends with `*** End of File`. `Add File` on a path that exists replaces its whole contents. `tests/fixtures/scenarios` holds one directory per behavior, each with the input files, the patch and the expected result.
 
 ## Differences from Codex `apply_patch`
 

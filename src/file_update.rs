@@ -63,25 +63,26 @@ fn compute_replacements(
         // anchor of the chunk before it. Then its nearest occurrence above counts.
         let mut anchor_line = None;
         if let Some(ctx_line) = &chunk.change_context {
-            let anchor = std::slice::from_ref(ctx_line);
-            match seek_sequence(original_lines, anchor, line_index, /*eof*/ false) {
-                Match::One(idx) => {
+            match locate_anchor(original_lines, ctx_line, line_index) {
+                Anchor::Below(idx) => {
                     anchor_line = Some(idx);
                     line_index = idx + 1;
                 }
-                Match::Many(found) => {
-                    anchor_line = Some(found[0]);
-                    line_index = found[0] + 1;
+                Anchor::Above(idx) => anchor_line = Some(idx),
+                Anchor::Missing => {
+                    return Err(ApplyPatchError::DoesNotApply(format!(
+                        "{chunk_label}: anchor `@@ {ctx_line}` not found\n  \
+                         an anchor has to be a whole line, or the start of exactly one line"
+                    )));
                 }
-                Match::None => match seek_sequence(original_lines, anchor, 0, /*eof*/ false) {
-                    Match::One(idx) => anchor_line = Some(idx),
-                    Match::Many(found) => anchor_line = found.last().copied(),
-                    Match::None => {
-                        return Err(ApplyPatchError::DoesNotApply(format!(
-                            "{chunk_label}: anchor `@@ {ctx_line}` not found"
-                        )));
-                    }
-                },
+                Anchor::Ambiguous(lines) => {
+                    return Err(ApplyPatchError::DoesNotApply(format!(
+                        "{chunk_label}: anchor `@@ {ctx_line}` is the start of {} lines, at {}\n  \
+                         give more of the line so that it starts only one",
+                        lines.len(),
+                        line_numbers(&lines)
+                    )));
+                }
             }
         }
 
@@ -105,14 +106,12 @@ fn compute_replacements(
         let next_anchor = chunks
             .get(chunk_index + 1)
             .and_then(|next| next.change_context.as_ref())
-            .and_then(|anchor| {
-                let anchor = std::slice::from_ref(anchor);
-                match seek_sequence(original_lines, anchor, line_index, /*eof*/ false) {
-                    Match::One(idx) => Some(idx),
-                    Match::Many(found) => Some(found[0]),
-                    Match::None => None,
-                }
-            });
+            .and_then(
+                |anchor| match locate_anchor(original_lines, anchor, line_index) {
+                    Anchor::Below(idx) => Some(idx),
+                    _ => None,
+                },
+            );
         let below = |pattern: &[String]| {
             let above_next_anchor = match next_anchor {
                 Some(end) if !chunk.is_end_of_file => {
@@ -326,6 +325,46 @@ fn push_replacements(
     }
 }
 
+/// Where an `@@` anchor stands, relative to the line the search starts at.
+enum Anchor {
+    /// Its first occurrence at or below the search start.
+    Below(usize),
+    /// Its nearest occurrence, when it occurs only above the search start.
+    Above(usize),
+    Missing,
+    /// The lines it is the start of, when it is no whole line and starts several.
+    Ambiguous(Vec<usize>),
+}
+
+/// Finds an anchor as a whole line, or failing that as the start of exactly one line. A
+/// method signature is often given only up to its opening parenthesis.
+fn locate_anchor(lines: &[String], anchor: &str, from: usize) -> Anchor {
+    let whole = [anchor.to_string()];
+    match seek_sequence(lines, &whole, from, /*eof*/ false) {
+        Match::One(idx) => return Anchor::Below(idx),
+        Match::Many(found) => return Anchor::Below(found[0]),
+        Match::None => {}
+    }
+    match seek_sequence(lines, &whole, 0, /*eof*/ false) {
+        Match::One(idx) => return Anchor::Above(idx),
+        Match::Many(found) => {
+            return found
+                .last()
+                .map_or(Anchor::Missing, |&idx| Anchor::Above(idx));
+        }
+        Match::None => {}
+    }
+    let start = anchor.trim();
+    let starting: Vec<usize> = (0..lines.len())
+        .filter(|&idx| !start.is_empty() && lines[idx].trim_start().starts_with(start))
+        .collect();
+    match starting.as_slice() {
+        [] => Anchor::Missing,
+        &[idx] if idx >= from => Anchor::Below(idx),
+        &[idx] => Anchor::Above(idx),
+        _ => Anchor::Ambiguous(starting),
+    }
+}
 /// Formats zero-based line indices as `line 3` or `lines 3, 7`.
 fn line_numbers(indices: &[usize]) -> String {
     let numbers: Vec<String> = indices.iter().map(|idx| (idx + 1).to_string()).collect();

@@ -343,12 +343,41 @@ fn all_with_fragments_replaces_every_occurrence() {
 fn missing_anchor_is_reported() {
     assert_eq!(
         error("a\nb\n", "@@ def missing():\n-a\n+A"),
-        "f.txt: chunk 1 of 1: anchor `@@ def missing():` not found"
+        "f.txt: chunk 1 of 1: anchor `@@ def missing():` not found\n  \
+         an anchor has to be a whole line, or the start of exactly one line"
     );
 
     assert_eq!(
         error("a\nb\n", "@@\n-a\n+A\n@@ def missing():\n-b\n+B"),
-        "f.txt: chunk 2 of 2: anchor `@@ def missing():` not found"
+        "f.txt: chunk 2 of 2: anchor `@@ def missing():` not found\n  \
+         an anchor has to be a whole line, or the start of exactly one line"
+    );
+}
+
+#[test]
+fn anchor_may_be_the_start_of_exactly_one_line() {
+    let file = "class X {\n    int a() {\n        return 1;\n    }\n\n    \
+                private static int b(int x, int y) {\n        return 1;\n    }\n}\n";
+    assert_eq!(
+        updated(
+            file,
+            "@@ private static int b(\n-        return 1;\n+        return 2;"
+        )
+        .unwrap(),
+        file.replacen(
+            "        return 1;\n    }\n}",
+            "        return 2;\n    }\n}",
+            1
+        )
+    );
+
+    assert_eq!(
+        error(
+            "    static int a() {\n    }\n    static int b() {\n    }\n",
+            "@@ static int\n-    }\n+    };"
+        ),
+        "f.txt: chunk 1 of 1: anchor `@@ static int` is the start of 2 lines, at lines 1, 3\n  \
+         give more of the line so that it starts only one"
     );
 }
 
