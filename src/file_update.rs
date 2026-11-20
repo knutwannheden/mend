@@ -365,6 +365,7 @@ fn locate_anchor(lines: &[String], anchor: &str, from: usize) -> Anchor {
         _ => Anchor::Ambiguous(starting),
     }
 }
+
 /// Formats zero-based line indices as `line 3` or `lines 3, 7`.
 fn line_numbers(indices: &[usize]) -> String {
     let numbers: Vec<String> = indices.iter().map(|idx| (idx + 1).to_string()).collect();

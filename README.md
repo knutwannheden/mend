@@ -147,7 +147,7 @@ To change an existing file, pipe a patch to `patchwork` instead of using your ed
 
 - Run whatever depends on the edit with `&&` on the heredoc line. A command on the next line runs even when the patch failed.
 - Always quote the heredoc delimiter, as in `<<'EOF'`. Unquoted, the shell expands every `$name` and runs whatever stands in backticks inside the patch. For a shared path prefix pass `-C <dir>`.
-- Each chunk must match exactly one place. An `@@ <line>` anchor narrows where it is looked for, to below that line and above the next chunk's anchor. A chunk of only `+` lines goes right after its anchor line. On exit 1 nothing was written, and stderr says where the chunk came closest, so correct the chunk from that message.
+- Each chunk must match exactly one place. An `@@ <line>` anchor narrows where it is looked for, to below that line and above the next chunk's anchor. It may give just the start of its line, such as a method signature up to `(`, as long as only one line starts that way. A chunk of only `+` lines goes right after its anchor line. On exit 1 nothing was written, and stderr says where the chunk came closest, so correct the chunk from that message.
 - For a temporary edit such as a mutation check, use `--revert --then '<command>'`. It restores the files once the command has finished.
 - `*** Add File:` on a path that exists replaces the whole file.
 - To change a few words inside a long line, pass `--fragment` and give only that part as one `-` line and one `+` line.
