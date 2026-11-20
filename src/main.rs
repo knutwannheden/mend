@@ -288,14 +288,19 @@ fn run_command(command: &str, signal: Option<&AtomicUsize>) -> std::io::Result<O
         return child.wait().map(Outcome::Finished);
     };
     loop {
-        if let Some(status) = child.try_wait()? {
-            return Ok(Outcome::Finished(status));
-        }
+        let finished = child.try_wait()?;
+        // Ctrl-C reaches the command and this process together, so the command may have ended
+        // by the time the signal shows up here. That still counts as an interruption.
         let received = signal.load(Ordering::Relaxed);
         if received != 0 {
-            let _ = child.kill();
-            let _ = child.wait();
+            if finished.is_none() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
             return Ok(Outcome::Interrupted(received));
+        }
+        if let Some(status) = finished {
+            return Ok(Outcome::Finished(status));
         }
         std::thread::sleep(Duration::from_millis(10));
     }

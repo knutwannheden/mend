@@ -173,12 +173,15 @@ fn test_apply_patch_cli_uses_crlf_for_new_trailing_newline() -> anyhow::Result<(
 }
 
 #[test]
-fn test_apply_patch_cli_moves_file_to_new_directory() -> anyhow::Result<()> {
+fn test_apply_patch_cli_moves_file_to_new_directory_with_its_permissions() -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
     let tmp = tempdir()?;
     let original_path = tmp.path().join("old/name.txt");
     let new_path = tmp.path().join("renamed/dir/name.txt");
     fs::create_dir_all(original_path.parent().expect("parent should exist"))?;
     fs::write(&original_path, "old content\n")?;
+    fs::set_permissions(&original_path, fs::Permissions::from_mode(0o755))?;
 
     let patch = "*** Begin Patch\n*** Update File: old/name.txt\n*** Move to: renamed/dir/name.txt\n@@\n-old content\n+new content\n*** End Patch";
 
@@ -188,6 +191,7 @@ fn test_apply_patch_cli_moves_file_to_new_directory() -> anyhow::Result<()> {
 
     assert!(!original_path.exists());
     assert_eq!(fs::read_to_string(&new_path)?, "new content\n");
+    assert_eq!(fs::metadata(&new_path)?.permissions().mode() & 0o777, 0o755);
 
     Ok(())
 }
@@ -385,6 +389,26 @@ fn test_apply_patch_cli_later_hunks_see_earlier_hunks() -> anyhow::Result<()> {
     );
     assert!(!tmp.path().join("new").exists());
     assert!(!tmp.path().join("remove.txt").exists());
+
+    Ok(())
+}
+
+#[test]
+fn test_apply_patch_cli_two_spellings_of_a_path_name_one_file() -> anyhow::Result<()> {
+    let tmp = tempdir()?;
+    fs::create_dir(tmp.path().join("src"))?;
+
+    run_apply_patch_in_dir(
+        tmp.path(),
+        "*** Begin Patch\n*** Add File: src/new.txt\n+original\n*** Update File: src/../src/new.txt\n@@\n-original\n+changed\n*** End Patch",
+    )?
+    .success()
+    .stdout("A src/new.txt\n");
+
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("src/new.txt"))?,
+        "changed\n"
+    );
 
     Ok(())
 }

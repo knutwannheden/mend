@@ -98,6 +98,42 @@ fn revert_leaves_a_file_alone_that_changed_after_the_patch() -> anyhow::Result<(
 }
 
 #[test]
+fn revert_restores_a_read_only_file() -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempdir()?;
+    let file = tmp.path().join("f.txt");
+    fs::write(&file, "old\n")?;
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o444))?;
+
+    patchwork(tmp.path())
+        .args(["--revert", "--then", "true"])
+        .write_stdin(PATCH)
+        .assert()
+        .success();
+
+    assert_eq!(fs::read_to_string(&file)?, "old\n");
+    assert_eq!(fs::metadata(&file)?.permissions().mode() & 0o777, 0o444);
+    Ok(())
+}
+
+#[test]
+fn signal_that_arrives_as_the_command_ends_still_exits_128_plus_n() -> anyhow::Result<()> {
+    let tmp = tempdir()?;
+    fs::write(tmp.path().join("f.txt"), "old\n")?;
+
+    patchwork(tmp.path())
+        .args(["--revert", "--then", "kill -TERM $PPID; exit 5"])
+        .write_stdin(PATCH)
+        .assert()
+        .code(128 + 15)
+        .stderr("patchwork: interrupted by signal 15; the files were restored\n");
+
+    assert_eq!(fs::read_to_string(tmp.path().join("f.txt"))?, "old\n");
+    Ok(())
+}
+
+#[test]
 fn revert_restores_the_files_when_terminated_while_the_command_runs() -> anyhow::Result<()> {
     let tmp = tempdir()?;
     let file = tmp.path().join("f.txt");

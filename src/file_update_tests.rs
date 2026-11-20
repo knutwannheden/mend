@@ -161,6 +161,14 @@ fn chunk_above_the_previous_one_applies_where_it_matches_exactly_once() {
 }
 
 #[test]
+fn chunk_above_the_previous_one_adds_lines_ahead_of_the_line_that_one_changed() {
+    assert_eq!(
+        updated("a\nb\nc\nd\n", "@@\n-c\n+C\n@@\n a\n b\n+inserted").unwrap(),
+        "a\nb\ninserted\nC\nd\n"
+    );
+}
+
+#[test]
 fn anchor_above_the_previous_chunk_leaves_the_search_where_it_is() {
     assert_eq!(
         updated(
@@ -199,5 +207,34 @@ fn missing_anchor_is_reported() {
     assert_eq!(
         error("a\nb\n", "@@\n-a\n+A\n@@ def missing():\n-b\n+B"),
         "f.txt: chunk 2 of 2: anchor `@@ def missing():` not found"
+    );
+}
+
+#[test]
+fn removed_blank_line_that_the_file_lacks_matches_nothing() {
+    assert_eq!(
+        error("one\ntwo\n", "@@\n-\n+foo"),
+        "f.txt: chunk 1 of 1 matches nothing, and no similar lines were found"
+    );
+}
+
+#[test]
+fn end_of_file_chunk_that_matches_elsewhere_reports_where() {
+    assert_eq!(
+        error("a\nb\n", "@@\n-a\n+A\n*** End of File"),
+        "f.txt: chunk 1 of 1 matches line 1, but not at the end of the file\n  \
+         drop `*** End of File` to change it there"
+    );
+}
+
+#[test]
+fn byte_order_mark_stays_in_place_and_out_of_the_first_line() {
+    assert_eq!(
+        updated(
+            "\u{feff}using System;\nclass A {}\n",
+            "@@\n-using System;\n+using System.IO;"
+        )
+        .unwrap(),
+        "\u{feff}using System.IO;\nclass A {}\n"
     );
 }

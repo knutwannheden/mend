@@ -34,7 +34,8 @@ fn compute_replacements(
     path: &str,
     chunks: &[UpdateFileChunk],
 ) -> Result<Vec<Replacement>, ApplyPatchError> {
-    let mut replacements: Vec<Replacement> = Vec::new();
+    // Each replacement with the line where its chunk matched.
+    let mut replacements: Vec<(usize, Replacement)> = Vec::new();
     let mut line_index: usize = 0;
     // The lines each chunk has matched so far, as (start, length).
     let mut matched: Vec<(usize, usize)> = Vec::new();
@@ -64,7 +65,8 @@ fn compute_replacements(
         }
 
         if chunk.old_lines.is_empty() {
-            replacements.push((original_lines.len(), 0, chunk.new_lines.clone()));
+            let end = original_lines.len();
+            replacements.push((end, (end, 0, chunk.new_lines.clone())));
             continue;
         }
 
@@ -77,7 +79,9 @@ fn compute_replacements(
         let mut pattern: &[String] = &chunk.old_lines;
         let mut new_slice: &[String] = &chunk.new_lines;
         let mut found = seek_sequence(original_lines, pattern, line_index, chunk.is_end_of_file);
-        if found == Match::None && pattern.last().is_some_and(String::is_empty) {
+        // Dropping the only line would leave an empty pattern, which matches anywhere.
+        if found == Match::None && pattern.len() > 1 && pattern.last().is_some_and(String::is_empty)
+        {
             pattern = &pattern[..pattern.len() - 1];
             if new_slice.last().is_some_and(String::is_empty) {
                 new_slice = &new_slice[..new_slice.len() - 1];
@@ -92,15 +96,29 @@ fn compute_replacements(
         let start_idx = match found {
             Match::One(start_idx) => start_idx,
             Match::Many(found) => {
-                let lines: Vec<String> = found.iter().map(|idx| (idx + 1).to_string()).collect();
                 return Err(ApplyPatchError::DoesNotApply(format!(
-                    "{chunk_label} matches {} places, at lines {}\n  \
+                    "{chunk_label} matches {} places, at {}\n  \
                      add context lines or an `@@` anchor line so that it matches only one",
                     found.len(),
-                    lines.join(", ")
+                    line_numbers(&found)
                 )));
             }
             Match::None => {
+                let elsewhere = match chunk
+                    .is_end_of_file
+                    .then(|| seek_sequence(original_lines, pattern, 0, /*eof*/ false))
+                {
+                    Some(Match::One(idx)) => vec![idx],
+                    Some(Match::Many(found)) => found,
+                    _ => Vec::new(),
+                };
+                if !elsewhere.is_empty() {
+                    return Err(ApplyPatchError::DoesNotApply(format!(
+                        "{chunk_label} matches {}, but not at the end of the file\n  \
+                         drop `*** End of File` to change it there",
+                        line_numbers(&elsewhere)
+                    )));
+                }
                 let reason = part_of_a_line(original_lines, pattern)
                     .or_else(|| closest_place(original_lines, pattern));
                 return Err(ApplyPatchError::DoesNotApply(match reason {
@@ -136,9 +154,12 @@ fn compute_replacements(
             }
             if old_start != old_context || new_start != new_context {
                 replacements.push((
-                    start_idx + old_start,
-                    old_context - old_start,
-                    new_slice[new_start..new_context].to_vec(),
+                    start_idx,
+                    (
+                        start_idx + old_start,
+                        old_context - old_start,
+                        new_slice[new_start..new_context].to_vec(),
+                    ),
                 ));
             }
             old_start = old_context + 1;
@@ -146,9 +167,12 @@ fn compute_replacements(
         }
         if old_start != pattern.len() || new_start != new_slice.len() {
             replacements.push((
-                start_idx + old_start,
-                pattern.len() - old_start,
-                new_slice[new_start..].to_vec(),
+                start_idx,
+                (
+                    start_idx + old_start,
+                    pattern.len() - old_start,
+                    new_slice[new_start..].to_vec(),
+                ),
             ));
         }
         // A chunk found above the search start leaves the search where it was.
@@ -157,9 +181,21 @@ fn compute_replacements(
         }
     }
 
-    replacements.sort_by_key(|(index, _, _)| *index);
+    // Two chunks that touch can each have a replacement at the line where they meet. The
+    // upper chunk's has to come first, whichever of the two the patch names first.
+    replacements.sort_by_key(|(chunk_start, (index, _, _))| (*index, *chunk_start));
 
-    Ok(replacements)
+    Ok(replacements
+        .into_iter()
+        .map(|(_, replacement)| replacement)
+        .collect())
+}
+
+/// Formats zero-based line indices as `line 3` or `lines 3, 7`.
+fn line_numbers(indices: &[usize]) -> String {
+    let numbers: Vec<String> = indices.iter().map(|idx| (idx + 1).to_string()).collect();
+    let noun = if numbers.len() == 1 { "line" } else { "lines" };
+    format!("{noun} {}", numbers.join(", "))
 }
 
 /// Names the one line that holds a chunk line without being equal to it, which is what a

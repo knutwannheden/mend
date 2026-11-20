@@ -23,9 +23,14 @@ struct SourceLine {
 }
 
 pub(super) struct SourceFile {
+    /// Whether the contents start with a byte order mark, which is kept out of the first line
+    /// so that a chunk can match that line.
+    has_bom: bool,
     lines: Vec<SourceLine>,
     preferred_ending: LineEnding,
 }
+
+const BOM: char = '\u{feff}';
 
 impl SourceFile {
     /// Splits contents into logical lines while retaining each line ending.
@@ -33,6 +38,8 @@ impl SourceFile {
     /// The first existing ending becomes the preferred style for inserted
     /// lines; files without an ending default to LF.
     pub(super) fn parse(contents: &str) -> Self {
+        let has_bom = contents.starts_with(BOM);
+        let contents = contents.strip_prefix(BOM).unwrap_or(contents);
         let mut lines = Vec::new();
         let mut preferred_ending = None;
         let mut line_start = 0;
@@ -67,6 +74,7 @@ impl SourceFile {
         }
 
         Self {
+            has_bom,
             lines,
             preferred_ending: preferred_ending.unwrap_or(LineEnding::Lf),
         }
@@ -110,6 +118,9 @@ impl SourceFile {
 
     pub(super) fn into_contents(self) -> String {
         let mut contents = String::new();
+        if self.has_bom {
+            contents.push(BOM);
+        }
         for line in self.lines {
             contents.push_str(&line.text);
             if let Some(ending) = line.ending {

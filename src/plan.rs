@@ -91,13 +91,30 @@ impl FileChange {
             },
             (Some(_), Some(link)) if self.after.is_none() => symlink(link, &self.path),
             (Some(before), _) => {
-                let target = self.write_path();
-                fs::write(&target, before)?;
-                match &self.permissions {
-                    Some(permissions) => fs::set_permissions(&target, permissions.clone()),
-                    None => Ok(()),
+                // Renamed into place as `commit` does, since a read-only file cannot be
+                // written to but can be replaced.
+                let temp = self.temp_path();
+                let written = self
+                    .write_temp(before)
+                    .and_then(|()| fs::rename(&temp, self.write_path()));
+                if written.is_err() {
+                    let _ = fs::remove_file(&temp);
                 }
+                written
             }
+        }
+    }
+
+    /// Writes `contents` to the temporary file and gives it this change's permissions.
+    fn write_temp(&self, contents: &[u8]) -> io::Result<()> {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(self.temp_path())?;
+        file.write_all(contents)?;
+        match &self.permissions {
+            Some(permissions) => file.set_permissions(permissions.clone()),
+            None => Ok(()),
         }
     }
 }
@@ -147,8 +164,15 @@ impl Plan {
                     match move_path {
                         Some(dest) => {
                             plan.changes[index].after = None;
+                            let permissions = plan.changes[index].permissions.clone();
                             let dest_index = plan.change_for(dest, cwd, "write")?;
-                            plan.changes[dest_index].after = Some(new_contents);
+                            let dest = &mut plan.changes[dest_index];
+                            dest.after = Some(new_contents);
+                            // A destination that exists keeps its own permissions, as a
+                            // file replaced by `Add File` does.
+                            if dest.before.is_none() {
+                                dest.permissions = permissions;
+                            }
                         }
                         None => plan.changes[index].after = Some(new_contents),
                     }
@@ -166,7 +190,7 @@ impl Plan {
         cwd: &Path,
         action: &str,
     ) -> Result<usize, ApplyPatchError> {
-        let path = cwd.join(label);
+        let path = resolve_directory(&cwd.join(label));
         if let Some(index) = self.changes.iter().position(|change| change.path == path) {
             return Ok(index);
         }
@@ -247,18 +271,9 @@ impl Plan {
                     source,
                 )
             };
-            let temp = change.temp_path();
             self.created_dirs
-                .extend(create_parent_dirs(&temp).map_err(fail)?);
-            let mut file = fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&temp)
-                .map_err(fail)?;
-            file.write_all(after).map_err(fail)?;
-            if let Some(permissions) = &change.permissions {
-                file.set_permissions(permissions.clone()).map_err(fail)?;
-            }
+                .extend(create_parent_dirs(&change.temp_path()).map_err(fail)?);
+            change.write_temp(after).map_err(fail)?;
         }
         Ok(())
     }
@@ -331,6 +346,19 @@ fn create_parent_dirs(path: &Path) -> io::Result<Vec<PathBuf>> {
         fs::create_dir_all(innermost)?;
     }
     Ok(missing)
+}
+
+/// Resolves symbolic links and `..` in the directory part of `path`, so that two spellings of
+/// one path compare equal. The last component is left alone, since a symbolic link there is a
+/// different thing to delete than the file it points to.
+fn resolve_directory(path: &Path) -> PathBuf {
+    let directory = path
+        .parent()
+        .and_then(|parent| fs::canonicalize(parent).ok());
+    match (directory, path.file_name()) {
+        (Some(directory), Some(name)) => directory.join(name),
+        _ => path.to_path_buf(),
+    }
 }
 
 fn does_not_apply(label: &Path, problem: &str) -> ApplyPatchError {
