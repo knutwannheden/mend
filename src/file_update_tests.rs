@@ -81,3 +81,69 @@ fn ascii_punctuation_matches_typographic_punctuation() {
         "import asyncio  # HELLO\n"
     );
 }
+
+fn error(original: &str, body: &str) -> String {
+    updated(original, body).unwrap_err().to_string()
+}
+
+#[test]
+fn chunk_matching_several_places_is_rejected_with_their_lines() {
+    assert_eq!(
+        error("x = 1\ny = 2\nx = 1\n", "@@\n-x = 1\n+x = 3"),
+        "f.txt: chunk 1 of 1 matches 2 places, at lines 1, 3\n  \
+         add context lines or an `@@` anchor line so that it matches only one"
+    );
+}
+
+#[test]
+fn anchor_selects_one_of_several_matching_places() {
+    assert_eq!(
+        updated(
+            "def a():\n    return 1\ndef b():\n    return 1\n",
+            "@@ def b():\n-    return 1\n+    return 2"
+        )
+        .unwrap(),
+        "def a():\n    return 1\ndef b():\n    return 2\n"
+    );
+}
+
+#[test]
+fn chunk_matching_nothing_reports_the_closest_place_and_its_first_difference() {
+    assert_eq!(
+        error(
+            "fn main() {\n    let x = foo(baz);\n    run(x);\n}\n",
+            "@@\n fn main() {\n-    let x = foo(bar);\n+    let x = foo(qux);\n     run(x);"
+        ),
+        "f.txt: chunk 1 of 1 matches nothing\n  \
+         closest is at line 1 (2 of 3 lines match); line 2 differs:\n    \
+         patch:     let x = foo(bar);\n    \
+         file:      let x = foo(baz);"
+    );
+
+    assert_eq!(
+        error("alpha\nbeta\n", "@@\n-something else entirely\n+x"),
+        "f.txt: chunk 1 of 1 matches nothing, and no similar lines were found"
+    );
+}
+
+#[test]
+fn chunk_matching_only_above_its_search_start_is_reported_as_out_of_order() {
+    assert_eq!(
+        error("a\nb\nc\n", "@@\n-c\n+C\n@@\n-a\n+A"),
+        "f.txt: chunk 2 of 2 matches only at line 1, above line 4 where its search starts\n  \
+         chunks and `@@` anchors must follow file order"
+    );
+}
+
+#[test]
+fn missing_anchor_is_reported() {
+    assert_eq!(
+        error("a\nb\n", "@@ def missing():\n-a\n+A"),
+        "f.txt: chunk 1 of 1: anchor `@@ def missing():` not found"
+    );
+
+    assert_eq!(
+        error("a\nb\n", "@@\n-a\n+A\n@@ def missing():\n-b\n+B"),
+        "f.txt: chunk 2 of 2: anchor `@@ def missing():` not found below line 1"
+    );
+}

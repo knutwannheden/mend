@@ -1,0 +1,6 @@
+*** Begin Patch
+*** Update File: dup.txt
+@@
+-x = 1
++x = 3
+*** End Patch

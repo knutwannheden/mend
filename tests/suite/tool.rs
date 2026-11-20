@@ -87,7 +87,10 @@ fn test_apply_patch_cli_rejects_overlapping_end_of_file_chunks() -> anyhow::Resu
 
     run_apply_patch_in_dir(tmp.path(), patch)?
         .failure()
-        .stderr("Failed to find expected lines in overlapping.txt:\none\n");
+        .stderr(
+            "overlapping.txt: chunk 2 of 2 matches only at line 1, above line 2 where its search starts\n  \
+             chunks and `@@` anchors must follow file order\n",
+        );
 
     assert_eq!(fs::read_to_string(target_path)?, "one\n");
     Ok(())
@@ -213,7 +216,7 @@ fn test_apply_patch_cli_reports_missing_context() -> anyhow::Result<()> {
         .arg("*** Begin Patch\n*** Update File: modify.txt\n@@\n-missing\n+changed\n*** End Patch")
         .assert()
         .failure()
-        .stderr("Failed to find expected lines in modify.txt:\nmissing\n");
+        .stderr("modify.txt: chunk 1 of 1 matches nothing, and no similar lines were found\n");
     assert_eq!(fs::read_to_string(&target_path)?, "line1\nline2\n");
 
     Ok(())
