@@ -45,6 +45,7 @@ impl FileChange {
     /// A unified diff of the change, with `/dev/null` standing for a path that does not exist.
     pub fn unified_diff(&self) -> String {
         let name = |contents: &Option<Vec<u8>>, prefix: &str| match contents {
+            Some(_) if self.label.is_absolute() => self.label.display().to_string(),
             Some(_) => format!("{prefix}/{}", self.label.display()),
             None => "/dev/null".to_string(),
         };

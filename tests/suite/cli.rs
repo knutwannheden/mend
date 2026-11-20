@@ -170,6 +170,21 @@ fn test_diff_prints_a_unified_diff_in_place_of_status_lines() -> anyhow::Result<
         );
 
     assert_eq!(fs::read_to_string(tmp.path().join("f.txt"))?, "1\ntwo\n");
+
+    let absolute = tmp.path().canonicalize()?.join("f.txt");
+    apply_patch_command()?
+        .current_dir(tmp.path())
+        .arg("--diff")
+        .write_stdin(format!(
+            "*** Begin Patch\n*** Update File: {}\n@@\n-two\n+2\n*** End Patch",
+            absolute.display()
+        ))
+        .assert()
+        .success()
+        .stdout(format!(
+            "--- {0}\n+++ {0}\n@@ -1,2 +1,2 @@\n 1\n-two\n+2\n",
+            absolute.display()
+        ));
     Ok(())
 }
 
