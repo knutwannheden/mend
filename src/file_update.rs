@@ -27,8 +27,9 @@ pub(crate) fn derive_new_contents_from_chunks(
 /// new lines, given the patch `chunks`. Each replacement is returned as
 /// `(start_index, old_len, new_lines)`.
 ///
-/// Every chunk has to match exactly one place. It is looked for below the chunk before it
-/// first, and in the whole file when nothing matches there.
+/// Every chunk has to match exactly one place. It is looked for between its search start
+/// and the next chunk's anchor, then down to the end of the file, then in the whole file.
+/// The first of these that holds a match decides.
 fn compute_replacements(
     original_lines: &[String],
     path: &str,
@@ -78,7 +79,37 @@ fn compute_replacements(
         // so modifications touching the end-of-file can be located reliably.
         let mut pattern: &[String] = &chunk.old_lines;
         let mut new_slice: &[String] = &chunk.new_lines;
-        let mut found = seek_sequence(original_lines, pattern, line_index, chunk.is_end_of_file);
+        let next_anchor = chunks
+            .get(chunk_index + 1)
+            .and_then(|next| next.change_context.as_ref())
+            .and_then(|anchor| {
+                let anchor = std::slice::from_ref(anchor);
+                match seek_sequence(original_lines, anchor, line_index, /*eof*/ false) {
+                    Match::One(idx) => Some(idx),
+                    Match::Many(found) => Some(found[0]),
+                    Match::None => None,
+                }
+            });
+        let below = |pattern: &[String]| {
+            let above_next_anchor = match next_anchor {
+                Some(end) if !chunk.is_end_of_file => {
+                    seek_sequence(
+                        &original_lines[..end],
+                        pattern,
+                        line_index,
+                        /*eof*/ false,
+                    )
+                }
+                _ => Match::None,
+            };
+            match above_next_anchor {
+                Match::None => {
+                    seek_sequence(original_lines, pattern, line_index, chunk.is_end_of_file)
+                }
+                found => found,
+            }
+        };
+        let mut found = below(pattern);
         // Dropping the only line would leave an empty pattern, which matches anywhere.
         if found == Match::None && pattern.len() > 1 && pattern.last().is_some_and(String::is_empty)
         {
@@ -86,7 +117,7 @@ fn compute_replacements(
             if new_slice.last().is_some_and(String::is_empty) {
                 new_slice = &new_slice[..new_slice.len() - 1];
             }
-            found = seek_sequence(original_lines, pattern, line_index, chunk.is_end_of_file);
+            found = below(pattern);
         }
 
         let in_order = found != Match::None;

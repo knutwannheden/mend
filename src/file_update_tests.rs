@@ -169,6 +169,28 @@ fn chunk_above_the_previous_one_adds_lines_ahead_of_the_line_that_one_changed() 
 }
 
 #[test]
+fn next_anchor_ends_the_lines_a_chunk_is_looked_for_in_first() {
+    assert_eq!(
+        updated(
+            "def a():\n    x = 1\ndef b():\n    x = 1\n",
+            "@@ def a():\n-    x = 1\n+    x = 2\n@@ def b():\n-    x = 1\n+    x = 3"
+        )
+        .unwrap(),
+        "def a():\n    x = 2\ndef b():\n    x = 3\n"
+    );
+
+    // The only match below the search start lies below the next anchor.
+    assert_eq!(
+        updated(
+            "t\n# one\n# two\nt\nz\n",
+            "@@ # one\n-t\n+T\n@@ # two\n-z\n+Z"
+        )
+        .unwrap(),
+        "t\n# one\n# two\nT\nZ\n"
+    );
+}
+
+#[test]
 fn anchor_above_the_previous_chunk_leaves_the_search_where_it_is() {
     assert_eq!(
         updated(

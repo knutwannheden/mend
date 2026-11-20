@@ -71,7 +71,13 @@ A move prints `D` for the source and `A` or `M` for the destination. A path whos
 
 ## Matching
 
-Each chunk of an `Update File` hunk has to match exactly one place. Its lines are searched from the end of the previous chunk, or from its `@@` anchor line when it has one. When nothing matches there, the whole file is searched, so a chunk may come before the previous one in the file, and may repeat its anchor. Lines are compared exactly first, then ignoring trailing whitespace, then ignoring leading and trailing whitespace, then with typographic punctuation folded to ASCII. The strictest comparison that matches anywhere decides.
+Each chunk of an `Update File` hunk has to match exactly one place. It is looked for in three steps, and the first step that has a match decides:
+
+1. below its own `@@` anchor, or below the previous chunk when it has none, and above the next chunk's `@@` anchor
+2. from the same start down to the end of the file
+3. in the whole file, so a chunk may come before the previous one in the file, and may repeat its anchor
+
+An anchor before and after a chunk therefore tells apart text that occurs more than once. Lines are compared exactly first, then ignoring trailing whitespace, then ignoring leading and trailing whitespace, then with typographic punctuation folded to ASCII. The strictest comparison that matches anywhere decides.
 
 A chunk that matches several places is rejected with their line numbers.
 
