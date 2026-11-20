@@ -1,6 +1,10 @@
 *** Begin Patch
 *** Add File: created.txt
 +hello
+*** Update File: modify.txt
+@@
+-old
++new
 *** Update File: missing.txt
 @@
 -old

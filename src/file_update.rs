@@ -45,7 +45,7 @@ fn compute_replacements(
             ) {
                 line_index = idx + 1;
             } else {
-                return Err(ApplyPatchError::ComputeReplacements(format!(
+                return Err(ApplyPatchError::DoesNotApply(format!(
                     "Failed to find context '{ctx_line}' in {path}"
                 )));
             }
@@ -120,7 +120,7 @@ fn compute_replacements(
             }
             line_index = start_idx + pattern.len();
         } else {
-            return Err(ApplyPatchError::ComputeReplacements(format!(
+            return Err(ApplyPatchError::DoesNotApply(format!(
                 "Failed to find expected lines in {}:\n{}",
                 path,
                 chunk.old_lines.join("\n"),

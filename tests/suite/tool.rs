@@ -2,7 +2,6 @@ use assert_cmd::Command;
 use pretty_assertions::assert_eq;
 use std::fs;
 use std::path::Path;
-use std::path::PathBuf;
 use tempfile::tempdir;
 
 fn run_apply_patch_in_dir(dir: &Path, patch: &str) -> anyhow::Result<assert_cmd::assert::Assert> {
@@ -23,9 +22,7 @@ fn assert_apply_patch_updates_file(
 
     run_apply_patch_in_dir(tmp.path(), patch)?
         .success()
-        .stdout(format!(
-            "Success. Updated the following files:\nM {file_name}\n"
-        ));
+        .stdout(format!("M {file_name}\n"));
 
     assert_eq!(fs::read(target_path)?, expected);
     Ok(())
@@ -35,10 +32,6 @@ fn apply_patch_command(dir: &Path) -> anyhow::Result<Command> {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_patchwork"));
     cmd.current_dir(dir);
     Ok(cmd)
-}
-
-fn resolved_under(root: &Path, path: &str) -> anyhow::Result<PathBuf> {
-    Ok(root.canonicalize()?.join(path))
 }
 
 #[test]
@@ -53,9 +46,9 @@ fn test_apply_patch_cli_applies_multiple_operations() -> anyhow::Result<()> {
 
     let patch = "*** Begin Patch\n*** Add File: nested/new.txt\n+created\n*** Delete File: delete.txt\n*** Update File: modify.txt\n@@\n-line2\n+changed\n*** End Patch";
 
-    run_apply_patch_in_dir(tmp.path(), patch)?.success().stdout(
-        "Success. Updated the following files:\nA nested/new.txt\nM modify.txt\nD delete.txt\n",
-    );
+    run_apply_patch_in_dir(tmp.path(), patch)?
+        .success()
+        .stdout("A nested/new.txt\nD delete.txt\nM modify.txt\n");
 
     assert_eq!(fs::read_to_string(add_path)?, "created\n");
     assert_eq!(fs::read_to_string(&modify_path)?, "line1\nchanged\n");
@@ -74,7 +67,7 @@ fn test_apply_patch_cli_applies_multiple_chunks() -> anyhow::Result<()> {
 
     run_apply_patch_in_dir(tmp.path(), patch)?
         .success()
-        .stdout("Success. Updated the following files:\nM multi.txt\n");
+        .stdout("M multi.txt\n");
 
     assert_eq!(
         fs::read_to_string(&target_path)?,
@@ -88,17 +81,13 @@ fn test_apply_patch_cli_applies_multiple_chunks() -> anyhow::Result<()> {
 fn test_apply_patch_cli_rejects_overlapping_end_of_file_chunks() -> anyhow::Result<()> {
     let tmp = tempdir()?;
     let target_path = tmp.path().join("overlapping.txt");
-    let expected_target_path = resolved_under(tmp.path(), "overlapping.txt")?;
     fs::write(&target_path, "one\n")?;
 
     let patch = "*** Begin Patch\n*** Update File: overlapping.txt\n@@\n-one\n+first\n@@\n-one\n+second\n*** End of File\n*** End Patch";
 
     run_apply_patch_in_dir(tmp.path(), patch)?
         .failure()
-        .stderr(format!(
-            "Failed to find expected lines in {}:\none\n",
-            expected_target_path.display()
-        ));
+        .stderr("Failed to find expected lines in overlapping.txt:\none\n");
 
     assert_eq!(fs::read_to_string(target_path)?, "one\n");
     Ok(())
@@ -193,7 +182,7 @@ fn test_apply_patch_cli_moves_file_to_new_directory() -> anyhow::Result<()> {
 
     run_apply_patch_in_dir(tmp.path(), patch)?
         .success()
-        .stdout("Success. Updated the following files:\nM renamed/dir/name.txt\n");
+        .stdout("D old/name.txt\nA renamed/dir/name.txt\n");
 
     assert!(!original_path.exists());
     assert_eq!(fs::read_to_string(&new_path)?, "new content\n");
@@ -218,17 +207,13 @@ fn test_apply_patch_cli_rejects_empty_patch() -> anyhow::Result<()> {
 fn test_apply_patch_cli_reports_missing_context() -> anyhow::Result<()> {
     let tmp = tempdir()?;
     let target_path = tmp.path().join("modify.txt");
-    let expected_target_path = resolved_under(tmp.path(), "modify.txt")?;
     fs::write(&target_path, "line1\nline2\n")?;
 
     apply_patch_command(tmp.path())?
         .arg("*** Begin Patch\n*** Update File: modify.txt\n@@\n-missing\n+changed\n*** End Patch")
         .assert()
         .failure()
-        .stderr(format!(
-            "Failed to find expected lines in {}:\nmissing\n",
-            expected_target_path.display()
-        ));
+        .stderr("Failed to find expected lines in modify.txt:\nmissing\n");
     assert_eq!(fs::read_to_string(&target_path)?, "line1\nline2\n");
 
     Ok(())
@@ -237,16 +222,12 @@ fn test_apply_patch_cli_reports_missing_context() -> anyhow::Result<()> {
 #[test]
 fn test_apply_patch_cli_rejects_missing_file_delete() -> anyhow::Result<()> {
     let tmp = tempdir()?;
-    let missing_path = resolved_under(tmp.path(), "missing.txt")?;
 
     apply_patch_command(tmp.path())?
         .arg("*** Begin Patch\n*** Delete File: missing.txt\n*** End Patch")
         .assert()
         .failure()
-        .stderr(format!(
-            "Failed to delete file {}\n",
-            missing_path.display()
-        ));
+        .stderr("missing.txt: cannot delete, no such file\n");
 
     Ok(())
 }
@@ -267,16 +248,12 @@ fn test_apply_patch_cli_rejects_empty_update_hunk() -> anyhow::Result<()> {
 #[test]
 fn test_apply_patch_cli_requires_existing_file_for_update() -> anyhow::Result<()> {
     let tmp = tempdir()?;
-    let missing_path = resolved_under(tmp.path(), "missing.txt")?;
 
     apply_patch_command(tmp.path())?
         .arg("*** Begin Patch\n*** Update File: missing.txt\n@@\n-old\n+new\n*** End Patch")
         .assert()
         .failure()
-        .stderr(format!(
-            "Failed to read file to update {}: No such file or directory (os error 2)\n",
-            missing_path.display()
-        ));
+        .stderr("missing.txt: cannot update, no such file\n");
 
     Ok(())
 }
@@ -296,7 +273,7 @@ fn test_apply_patch_cli_move_overwrites_existing_destination() -> anyhow::Result
         "*** Begin Patch\n*** Update File: old/name.txt\n*** Move to: renamed/dir/name.txt\n@@\n-from\n+new\n*** End Patch",
     )?
     .success()
-    .stdout("Success. Updated the following files:\nM renamed/dir/name.txt\n");
+    .stdout("D old/name.txt\nM renamed/dir/name.txt\n");
 
     assert!(!original_path.exists());
     assert_eq!(fs::read_to_string(&destination)?, "new\n");
@@ -315,7 +292,7 @@ fn test_apply_patch_cli_add_overwrites_existing_file() -> anyhow::Result<()> {
         "*** Begin Patch\n*** Add File: duplicate.txt\n+new content\n*** End Patch",
     )?
     .success()
-    .stdout("Success. Updated the following files:\nA duplicate.txt\n");
+    .stdout("M duplicate.txt\n");
 
     assert_eq!(fs::read_to_string(&path)?, "new content\n");
 
@@ -326,17 +303,13 @@ fn test_apply_patch_cli_add_overwrites_existing_file() -> anyhow::Result<()> {
 fn test_apply_patch_cli_delete_directory_fails() -> anyhow::Result<()> {
     let tmp = tempdir()?;
     let dir = tmp.path().join("dir");
-    let expected_dir = resolved_under(tmp.path(), "dir")?;
     fs::create_dir(&dir)?;
 
     apply_patch_command(tmp.path())?
         .arg("*** Begin Patch\n*** Delete File: dir\n*** End Patch")
         .assert()
         .failure()
-        .stderr(format!(
-            "Failed to delete file {}\n",
-            expected_dir.display()
-        ));
+        .stderr("dir: cannot delete, is a directory\n");
 
     Ok(())
 }
@@ -365,7 +338,7 @@ fn test_apply_patch_cli_updates_file_appends_trailing_newline() -> anyhow::Resul
         "*** Begin Patch\n*** Update File: no_newline.txt\n@@\n-no newline at end\n+first line\n+second line\n*** End Patch",
     )?
     .success()
-    .stdout("Success. Updated the following files:\nM no_newline.txt\n");
+    .stdout("M no_newline.txt\n");
 
     let contents = fs::read_to_string(&target_path)?;
     assert!(contents.ends_with('\n'));
@@ -375,22 +348,103 @@ fn test_apply_patch_cli_updates_file_appends_trailing_newline() -> anyhow::Resul
 }
 
 #[test]
-fn test_apply_patch_cli_failure_after_partial_success_leaves_changes() -> anyhow::Result<()> {
+fn test_apply_patch_cli_failure_leaves_no_file_changed() -> anyhow::Result<()> {
     let tmp = tempdir()?;
-    let new_file = tmp.path().join("created.txt");
-    let missing_file = resolved_under(tmp.path(), "missing.txt")?;
+    let modify = tmp.path().join("modify.txt");
+    fs::write(&modify, "old\n")?;
 
     apply_patch_command(tmp.path())?
-        .arg("*** Begin Patch\n*** Add File: created.txt\n+hello\n*** Update File: missing.txt\n@@\n-old\n+new\n*** End Patch")
+        .arg("*** Begin Patch\n*** Add File: created.txt\n+hello\n*** Update File: modify.txt\n@@\n-old\n+new\n*** Update File: missing.txt\n@@\n-old\n+new\n*** End Patch")
         .assert()
         .failure()
         .stdout("")
-        .stderr(format!(
-            "Failed to read file to update {}: No such file or directory (os error 2)\n",
-            missing_file.display()
-        ));
+        .stderr("missing.txt: cannot update, no such file\n");
 
-    assert_eq!(fs::read_to_string(&new_file)?, "hello\n");
+    assert_eq!(fs::read_to_string(&modify)?, "old\n");
+    assert!(!tmp.path().join("created.txt").exists());
+
+    Ok(())
+}
+
+#[test]
+fn test_apply_patch_cli_later_hunks_see_earlier_hunks() -> anyhow::Result<()> {
+    let tmp = tempdir()?;
+
+    run_apply_patch_in_dir(
+        tmp.path(),
+        "*** Begin Patch\n*** Add File: new/file.txt\n+original\n*** Update File: new/file.txt\n*** Move to: moved/file.txt\n@@\n-original\n+changed\n*** Add File: remove.txt\n+remove\n*** Delete File: remove.txt\n*** End Patch",
+    )?
+    .success()
+    .stdout("A moved/file.txt\n");
+
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("moved/file.txt"))?,
+        "changed\n"
+    );
+    assert!(!tmp.path().join("new").exists());
+    assert!(!tmp.path().join("remove.txt").exists());
+
+    Ok(())
+}
+
+#[test]
+fn test_apply_patch_cli_failed_write_restores_earlier_writes() -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::symlink;
+
+    let tmp = tempdir()?;
+    let root = tmp.path();
+    fs::write(root.join("a.txt"), "old\n")?;
+    fs::write(root.join("target.txt"), "target\n")?;
+    symlink("target.txt", root.join("link.txt"))?;
+    let locked = root.join("locked");
+    fs::create_dir(&locked)?;
+    fs::write(locked.join("gone.txt"), "gone\n")?;
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o555))?;
+
+    let assert = apply_patch_command(root)?
+        .arg("*** Begin Patch\n*** Update File: a.txt\n@@\n-old\n+new\n*** Add File: sub/added.txt\n+added\n*** Delete File: link.txt\n*** Delete File: locked/gone.txt\n*** End Patch")
+        .assert();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755))?;
+    assert.failure().stdout("");
+
+    assert_eq!(fs::read_to_string(root.join("a.txt"))?, "old\n");
+    assert_eq!(
+        fs::read_link(root.join("link.txt"))?,
+        Path::new("target.txt")
+    );
+    let mut names: Vec<_> = fs::read_dir(root)?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<Result<_, _>>()?;
+    names.sort();
+    assert_eq!(names, ["a.txt", "link.txt", "locked", "target.txt"]);
+
+    Ok(())
+}
+
+#[test]
+fn test_apply_patch_cli_update_keeps_symlink_and_permissions() -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::symlink;
+
+    let tmp = tempdir()?;
+    let root = tmp.path();
+    fs::write(root.join("script.sh"), "echo old\n")?;
+    fs::set_permissions(root.join("script.sh"), fs::Permissions::from_mode(0o755))?;
+    symlink("script.sh", root.join("link.sh"))?;
+
+    run_apply_patch_in_dir(
+        root,
+        "*** Begin Patch\n*** Update File: link.sh\n@@\n-echo old\n+echo new\n*** End Patch",
+    )?
+    .success();
+
+    assert_eq!(fs::read_link(root.join("link.sh"))?, Path::new("script.sh"));
+    assert_eq!(fs::read_to_string(root.join("script.sh"))?, "echo new\n");
+    assert_eq!(
+        fs::metadata(root.join("script.sh"))?.permissions().mode() & 0o777,
+        0o755
+    );
 
     Ok(())
 }
@@ -415,10 +469,10 @@ fn test_apply_patch_cli_accepts_relative_and_absolute_paths() -> anyhow::Result<
     run_apply_patch_in_dir(&root, &patch)?
         .success()
         .stdout(format!(
-            "Success. Updated the following files:\nA {}\nM relative-update.txt\nM {}\nD {}\n",
+            "A {}\nD {}\nM relative-update.txt\nM {}\n",
             absolute_add.display(),
-            absolute_update.display(),
             absolute_delete.display(),
+            absolute_update.display(),
         ));
 
     assert_eq!(fs::read_to_string(&absolute_add)?, "absolute add\n");

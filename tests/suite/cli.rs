@@ -24,7 +24,7 @@ fn test_apply_patch_cli_add_and_update() -> anyhow::Result<()> {
         .current_dir(tmp.path())
         .assert()
         .success()
-        .stdout(format!("Success. Updated the following files:\nA {file}\n"));
+        .stdout(format!("A {file}\n"));
     assert_eq!(fs::read_to_string(&absolute_path)?, "hello\n");
 
     // 2) Update the file
@@ -41,7 +41,7 @@ fn test_apply_patch_cli_add_and_update() -> anyhow::Result<()> {
         .current_dir(tmp.path())
         .assert()
         .success()
-        .stdout(format!("Success. Updated the following files:\nM {file}\n"));
+        .stdout(format!("M {file}\n"));
     assert_eq!(fs::read_to_string(&absolute_path)?, "world\n");
 
     Ok(())
@@ -65,7 +65,7 @@ fn test_apply_patch_cli_stdin_add_and_update() -> anyhow::Result<()> {
         .write_stdin(add_patch)
         .assert()
         .success()
-        .stdout(format!("Success. Updated the following files:\nA {file}\n"));
+        .stdout(format!("A {file}\n"));
     assert_eq!(fs::read_to_string(&absolute_path)?, "hello\n");
 
     // 2) Update the file via stdin
@@ -82,7 +82,7 @@ fn test_apply_patch_cli_stdin_add_and_update() -> anyhow::Result<()> {
         .write_stdin(update_patch)
         .assert()
         .success()
-        .stdout(format!("Success. Updated the following files:\nM {file}\n"));
+        .stdout(format!("M {file}\n"));
     assert_eq!(fs::read_to_string(&absolute_path)?, "world\n");
 
     Ok(())
