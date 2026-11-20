@@ -13,6 +13,9 @@ doctest = false
 similar = "2"
 thiserror = "2"
 
+[target.'cfg(unix)'.dependencies]
+signal-hook = "0.3"
+
 [dev-dependencies]
 anyhow = "1"
 assert_cmd = "2"

@@ -75,7 +75,10 @@ impl FileChange {
 
     fn undo(&self) -> io::Result<()> {
         match (&self.before, &self.link) {
-            (None, _) => fs::remove_file(self.write_path()),
+            (None, _) => match fs::remove_file(self.write_path()) {
+                Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+                _ => Ok(()),
+            },
             (Some(_), Some(link)) if self.after.is_none() => symlink(link, &self.path),
             (Some(before), _) => {
                 let target = self.write_path();
@@ -263,13 +266,8 @@ impl Plan {
                     "delete"
                 };
                 let mut context = format!("Failed to {verb} {}", change.label.display());
-                for done in self.changes[..index].iter().rev() {
-                    if let Err(undo_error) = done.undo() {
-                        context = format!(
-                            "{context} (and could not restore {}: {undo_error})",
-                            done.label.display()
-                        );
-                    }
+                if let Err(undo_error) = undo(&self.changes[..index]) {
+                    context = format!("{context} (and {undo_error})");
                 }
                 return Err((context, source));
             }
@@ -277,10 +275,33 @@ impl Plan {
         Ok(())
     }
 
+    /// Puts every file back as it was before `commit`.
+    pub fn restore(&mut self) -> Result<(), ApplyPatchError> {
+        let undone = undo(&self.changes);
+        self.remove_created_dirs();
+        undone.map_err(ApplyPatchError::Restore)
+    }
+
     fn remove_created_dirs(&mut self) {
         for dir in self.created_dirs.drain(..).rev() {
             let _ = fs::remove_dir(dir);
         }
+    }
+}
+
+/// Undoes the changes in reverse order and reports the files that could not be restored.
+fn undo(changes: &[FileChange]) -> Result<(), String> {
+    let failures: Vec<String> = changes
+        .iter()
+        .rev()
+        .filter_map(|change| {
+            let error = change.undo().err()?;
+            Some(format!("{}: {error}", change.label.display()))
+        })
+        .collect();
+    match failures.is_empty() {
+        true => Ok(()),
+        false => Err(format!("could not restore {}", failures.join(", "))),
     }
 }
 

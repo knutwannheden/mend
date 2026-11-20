@@ -1,38 +1,51 @@
 use std::io::Read;
 use std::io::Write;
+use std::process::Command;
 use std::process::ExitCode;
+use std::process::ExitStatus;
+use std::process::Stdio;
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use patchwork::ApplyPatchError;
 use patchwork::ParseError;
 use patchwork::Plan;
 
 const USAGE: &str = "\
-Usage: patchwork [--check] [--diff] [PATCH]
+Usage: patchwork [--check] [--diff] [--then <command> [--revert]] [PATCH]
 
 Applies a patch in the Codex apply_patch format, read from PATCH or from stdin.
 Either every file the patch names is changed, or none is.
 
 Options:
-  --check        Report what the patch would change without writing anything
-  --diff         Print a unified diff of the changes instead of one status line per file
-  -h, --help     Print this help
-  -V, --version  Print the version
+  --check           Report what the patch would change without writing anything
+  --diff            Print a unified diff of the changes instead of one status line per file
+  --then <command>  Run <command> with `sh -c` once the patch is applied
+  --revert          With --then: restore every file when <command> has finished
+  -h, --help        Print this help
+  -V, --version     Print the version
 
 Exit status:
   0  the patch applied
   1  the patch does not fit the files; nothing was written
   2  the patch or the command line is malformed; nothing was written
+  3  the --then command failed; the edits are kept unless --revert was given
   4  a file could not be read or written; no file was left changed
 ";
 
 const DOES_NOT_APPLY: u8 = 1;
 const MALFORMED: u8 = 2;
+const THEN_FAILED: u8 = 3;
 const IO_FAILURE: u8 = 4;
 
 #[derive(Default)]
 struct Options {
     check: bool,
     diff: bool,
+    then: Option<String>,
+    revert: bool,
     patch: Option<String>,
 }
 
@@ -59,7 +72,7 @@ fn main() -> ExitCode {
         return usage_error("No patch was given");
     }
     match run(&patch, options) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(exit_code) => exit_code,
         Err(error) => {
             match &error {
                 ApplyPatchError::ParseError(ParseError::InvalidPatchError(message)) => {
@@ -74,19 +87,24 @@ fn main() -> ExitCode {
             ExitCode::from(match error {
                 ApplyPatchError::DoesNotApply(_) => DOES_NOT_APPLY,
                 ApplyPatchError::ParseError(_) => MALFORMED,
-                ApplyPatchError::IoError { .. } => IO_FAILURE,
+                ApplyPatchError::IoError { .. } | ApplyPatchError::Restore(_) => IO_FAILURE,
             })
         }
     }
 }
 
 /// Returns `None` when an option such as `--help` has been answered in full.
-fn parse_args(args: impl Iterator<Item = String>) -> Result<Option<Options>, String> {
+fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Options>, String> {
     let mut options = Options::default();
-    for arg in args {
+    while let Some(arg) = args.next() {
         match arg.as_str() {
             "--check" => options.check = true,
             "--diff" => options.diff = true,
+            "--revert" => options.revert = true,
+            "--then" => {
+                let command = args.next().ok_or("--then needs a command")?;
+                options.then = Some(command);
+            }
             "-h" | "--help" => {
                 print!("{USAGE}");
                 return Ok(None);
@@ -102,17 +120,30 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Option<Options>, Str
             _ => options.patch = Some(arg),
         }
     }
+    if options.revert && options.then.is_none() {
+        return Err("--revert needs --then".to_string());
+    }
+    if options.check && options.then.is_some() {
+        return Err("--check writes nothing, so it cannot be combined with --then".to_string());
+    }
     Ok(Some(options))
 }
 
-fn run(patch: &str, options: Options) -> Result<(), ApplyPatchError> {
-    let cwd = std::env::current_dir().map_err(|source| ApplyPatchError::IoError {
-        context: "Failed to determine the current directory".to_string(),
-        source,
-    })?;
+fn run(patch: &str, options: Options) -> Result<ExitCode, ApplyPatchError> {
+    let io_error = |context: &str| {
+        let context = context.to_string();
+        move |source| ApplyPatchError::IoError { context, source }
+    };
+    let cwd =
+        std::env::current_dir().map_err(io_error("Failed to determine the current directory"))?;
 
     let hunks = patchwork::parse_patch(patch)?;
     let mut plan = Plan::compute(&hunks, &cwd)?;
+    // Registered before the first write, so no signal can end the process with files left changed.
+    let signal = match options.revert {
+        true => Some(watch_signals().map_err(io_error("Failed to watch for signals"))?),
+        false => None,
+    };
     if !options.check {
         plan.commit()?;
     }
@@ -130,5 +161,84 @@ fn run(patch: &str, options: Options) -> Result<(), ApplyPatchError> {
         }
     }
     let _ = stdout.flush();
-    Ok(())
+    drop(stdout);
+
+    let Some(command) = options.then else {
+        return Ok(ExitCode::SUCCESS);
+    };
+    let outcome = run_command(&command, signal.as_deref());
+    let kept = if options.revert {
+        plan.restore()?;
+        "the files were restored"
+    } else {
+        "the edits were kept"
+    };
+    match outcome.map_err(io_error("Failed to run the --then command"))? {
+        Outcome::Finished(status) if status.success() => Ok(ExitCode::SUCCESS),
+        Outcome::Finished(status) => {
+            let how = match status.code() {
+                Some(code) => format!("exited with status {code}"),
+                None => "was terminated by a signal".to_string(),
+            };
+            eprintln!("patchwork: the --then command {how}; {kept}");
+            Ok(ExitCode::from(THEN_FAILED))
+        }
+        Outcome::Interrupted(signal) => {
+            eprintln!("patchwork: interrupted by signal {signal}; {kept}");
+            Ok(ExitCode::from(128 + signal as u8))
+        }
+    }
+}
+
+enum Outcome {
+    Finished(ExitStatus),
+    /// This process received the signal with the given number while the command ran.
+    Interrupted(usize),
+}
+
+/// Returns a cell that holds the number of the last termination signal received, or zero.
+#[cfg(unix)]
+fn watch_signals() -> std::io::Result<Arc<AtomicUsize>> {
+    use signal_hook::consts::SIGHUP;
+    use signal_hook::consts::SIGINT;
+    use signal_hook::consts::SIGTERM;
+
+    let received = Arc::new(AtomicUsize::new(0));
+    for signal in [SIGHUP, SIGINT, SIGTERM] {
+        signal_hook::flag::register_usize(signal, Arc::clone(&received), signal as usize)?;
+    }
+    Ok(received)
+}
+
+#[cfg(not(unix))]
+fn watch_signals() -> std::io::Result<Arc<AtomicUsize>> {
+    Ok(Arc::new(AtomicUsize::new(0)))
+}
+
+/// Runs `command` in a shell, stopping it early when `signal` reports a termination signal.
+fn run_command(command: &str, signal: Option<&AtomicUsize>) -> std::io::Result<Outcome> {
+    let (shell, flag) = if cfg!(windows) {
+        ("cmd", "/C")
+    } else {
+        ("sh", "-c")
+    };
+    let mut child = Command::new(shell)
+        .args([flag, command])
+        .stdin(Stdio::null())
+        .spawn()?;
+    let Some(signal) = signal else {
+        return child.wait().map(Outcome::Finished);
+    };
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(Outcome::Finished(status));
+        }
+        let received = signal.load(Ordering::Relaxed);
+        if received != 0 {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(Outcome::Interrupted(received));
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }

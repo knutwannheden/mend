@@ -28,6 +28,9 @@ pub enum ApplyPatchError {
     /// The patch does not fit the files it names.
     #[error("{0}")]
     DoesNotApply(String),
+    /// Files changed by the patch could not be put back.
+    #[error("{0}")]
+    Restore(String),
 }
 
 impl ApplyPatchError {
