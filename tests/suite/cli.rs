@@ -105,7 +105,9 @@ fn test_exit_status_distinguishes_a_patch_that_does_not_fit_from_a_malformed_one
         .write_stdin("*** Begin Patch\n*** Update File: f.txt\n@@\n-one\n+1\n")
         .assert()
         .code(2)
-        .stderr("Invalid patch: The last line of the patch must be '*** End Patch'\n");
+        .stderr(
+            "Invalid patch: The last line of the patch must be '*** End Patch', but it is `+1`\n",
+        );
 
     apply_patch_command()?
         .current_dir(tmp.path())

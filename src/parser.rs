@@ -142,8 +142,9 @@ fn check_start_and_end_lines_strict(
         (Some(first), _) if first != BEGIN_PATCH_MARKER => Err(InvalidPatchError(String::from(
             "The first line of the patch must be '*** Begin Patch'",
         ))),
-        _ => Err(InvalidPatchError(String::from(
-            "The last line of the patch must be '*** End Patch'",
+        _ => Err(InvalidPatchError(format!(
+            "The last line of the patch must be '*** End Patch', but it is `{}`",
+            last_line.unwrap_or_default()
         ))),
     }
 }
@@ -157,9 +158,9 @@ fn test_parse_patch() {
         ))
     );
     assert_eq!(
-        parse_patch("*** Begin Patch\nbad"),
+        parse_patch("*** Begin Patch\n*** Add File: a\n+fi\nEOF"),
         Err(InvalidPatchError(
-            "The last line of the patch must be '*** End Patch'".to_string()
+            "The last line of the patch must be '*** End Patch', but it is `EOF`".to_string()
         ))
     );
 
