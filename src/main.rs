@@ -49,6 +49,7 @@ Patch format:
   A chunk of only `+` lines goes right after its @@ anchor line, or at the end of the
   file when it has no anchor or ends with *** End of File.
   To insert before a line, give that line as a context line after the `+` lines.
+  Before a function with a comment above it, that line is the comment's first line.
   Added lines that end with a copy of the line just above them are rejected.
   A path is absolute or relative to the current directory, inside a repository or not.
   For a long shared prefix use -C <dir>, which leaves the heredoc quoted.
