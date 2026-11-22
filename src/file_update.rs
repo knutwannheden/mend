@@ -91,6 +91,12 @@ fn compute_replacements(
                 Some(line) if !chunk.is_end_of_file => line + 1,
                 _ => original_lines.len(),
             };
+            if let (Some(line), Some(last)) = (anchor_line, chunk.new_lines.last())
+                && !chunk.is_end_of_file
+                && repeats(last, &original_lines[line])
+            {
+                return Err(repeated_line_error(&chunk_label, line));
+            }
             replacements.push((at, (at, 0, chunk.new_lines.clone())));
             continue;
         }
@@ -236,6 +242,12 @@ fn compute_replacements(
                 lines
             }
         };
+        if rewritten.is_empty()
+            && let (Some(&start_idx), Some(context)) =
+                (places.first(), repeated_context_line(chunk, new_slice))
+        {
+            return Err(repeated_line_error(&chunk_label, start_idx + context));
+        }
         for &start_idx in &places {
             let end_idx = start_idx + pattern.len();
             if matched
@@ -278,6 +290,34 @@ fn compute_replacements(
         .map(|(_, replacement)| replacement)
         .collect();
     Ok((replacements, notes))
+}
+
+/// Whether an added line copies `above`, the line it is inserted below. Writing the line an
+/// insertion should go before as context, and then again at the end of the added lines, is a
+/// common mistake. Lines without a letter or digit, such as `}`, repeat legitimately.
+fn repeats(added: &str, above: &str) -> bool {
+    added.trim() == above.trim() && added.chars().any(char::is_alphanumeric)
+}
+
+/// Returns the index in `old_lines` of a context line that the run of added lines right after
+/// it ends by repeating.
+fn repeated_context_line(chunk: &UpdateFileChunk, new_slice: &[String]) -> Option<usize> {
+    let contexts = &chunk.context_line_indices;
+    contexts.iter().enumerate().find_map(|(i, &(old, new))| {
+        let run_end = contexts
+            .get(i + 1)
+            .map_or(new_slice.len(), |&(_, next)| next);
+        let last = new_slice.get(run_end.checked_sub(1)?)?;
+        (run_end > new + 1 && repeats(last, new_slice.get(new)?)).then_some(old)
+    })
+}
+
+fn repeated_line_error(chunk_label: &str, line: usize) -> ApplyPatchError {
+    let line = line + 1;
+    ApplyPatchError::DoesNotApply(format!(
+        "{chunk_label} repeats line {line} at the end of its added lines\n  \
+         to insert before line {line}, give it as a context line after the `+` lines"
+    ))
 }
 
 /// Adds the replacements that turn the lines a chunk matched at `start_idx` into its new

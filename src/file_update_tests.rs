@@ -432,3 +432,35 @@ fn addition_only_chunk_goes_right_after_its_anchor() {
         "class A {\n  int x;\n}\nclass B {\n}\n  int y;\n"
     );
 }
+
+#[test]
+fn added_lines_that_repeat_the_line_above_them_are_rejected() {
+    let file = "fn a() {\n}\n\nfn pct(n: u64) {\n}\n";
+    let hint = "\n  to insert before line 4, give it as a context line after the `+` lines";
+    assert_eq!(
+        error(
+            file,
+            "@@\n fn pct(n: u64) {\n+fn helper() {}\n+\n+fn pct(n: u64) {"
+        ),
+        format!("f.txt: chunk 1 of 1 repeats line 4 at the end of its added lines{hint}")
+    );
+
+    assert_eq!(
+        error(file, "@@ fn pct(\n+fn helper() {}\n+\n+fn pct(n: u64) {"),
+        format!("f.txt: chunk 1 of 1 repeats line 4 at the end of its added lines{hint}")
+    );
+}
+
+#[test]
+fn added_lines_may_repeat_a_closing_brace_or_put_the_copy_first() {
+    let file = "fn a() {\n}\n";
+    assert_eq!(
+        updated(file, "@@\n }\n+fn b() {\n+}").unwrap(),
+        "fn a() {\n}\nfn b() {\n}\n"
+    );
+
+    assert_eq!(
+        updated(file, "@@\n+fn a() {\n+}\n fn a() {").unwrap(),
+        "fn a() {\n}\nfn a() {\n}\n"
+    );
+}
