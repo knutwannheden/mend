@@ -33,7 +33,7 @@ The patch is read from the `PATCH` argument, or from stdin when there is none. A
 | `-C <dir>` | Resolves the relative paths in the patch against `<dir>`. |
 | `--check` | Reports what the patch would change without writing anything. |
 | `--diff` | Prints a unified diff of the changes instead of the status lines. `git apply -R` reverses it. |
-| `--fragment` | Lets a chunk of one `-` and one `+` line replace part of a line. It applies when no whole line matches, and the part has to occur exactly once where it is looked for. |
+| `--fragment` | Lets a chunk of one `-` and one `+` line replace part of a line. It applies when no whole line matches, and the part has to occur exactly once where it is looked for. Several chunks may replace different parts of one line. |
 | `--all` | Lets a chunk that matches several places change all of them. Standard error then names the lines. |
 | `--then <command>` | Runs `<command>` with `sh -c` once the patch is applied. When the command fails the edits stay in place. |
 | `--revert` | With `--then`, restores every file when the command has finished, whether it failed or succeeded. |
@@ -80,6 +80,8 @@ Each chunk of an `Update File` hunk has to match exactly one place. It is looked
 3. in the whole file, so a chunk may come before the previous one in the file, and may repeat its anchor
 
 An anchor before and after a chunk therefore tells apart text that occurs more than once. Lines are compared exactly first, then ignoring trailing whitespace, then ignoring leading and trailing whitespace, then with typographic punctuation folded to ASCII. The strictest comparison that matches anywhere decides.
+
+When a chunk's lines all leave out the same indentation that the file's lines have, its added lines get that indentation too.
 
 A chunk that matches several places is rejected with their line numbers.
 

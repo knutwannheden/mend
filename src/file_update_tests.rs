@@ -301,6 +301,61 @@ fn fragment_that_occurs_more_than_once_is_rejected() {
 }
 
 #[test]
+fn fragments_in_different_parts_of_one_line_are_all_replaced() {
+    assert_eq!(
+        applied(
+            "p one two three four\n",
+            "@@\n-four\n+FOUR\n@@\n-one\n+ONE",
+            FRAGMENTS
+        )
+        .unwrap()
+        .0,
+        "p ONE two three FOUR\n"
+    );
+}
+
+#[test]
+fn chunks_that_change_overlapping_parts_of_a_line_are_rejected() {
+    assert_eq!(
+        applied("p one two\n", "@@\n-one two\n+X\n@@\n-two\n+Y", FRAGMENTS)
+            .unwrap_err()
+            .to_string(),
+        "f.txt: chunk 2 of 2 changes part of line 1 that an earlier chunk already changed"
+    );
+
+    assert_eq!(
+        applied("p one\n", "@@\n-p one\n+P\n@@\n-one\n+ONE", FRAGMENTS)
+            .unwrap_err()
+            .to_string(),
+        "f.txt: chunk 2 of 2 matches only line 1, which an earlier chunk already matched"
+    );
+
+    assert_eq!(
+        applied("p one\n", "@@\n-one\n+ONE\n@@\n-p one\n+P", FRAGMENTS)
+            .unwrap_err()
+            .to_string(),
+        "f.txt: chunk 2 of 2 matches only line 1, which an earlier chunk already matched"
+    );
+}
+
+#[test]
+fn added_lines_get_the_indentation_the_chunk_left_out() {
+    assert_eq!(
+        updated(
+            "fn f() {\n    let x = 1;\n    let y = 2;\n}\n",
+            "@@\n-let x = 1;\n+let x = 10;\n+\n+let z = 3;\n let y = 2;"
+        )
+        .unwrap(),
+        "fn f() {\n    let x = 10;\n\n    let z = 3;\n    let y = 2;\n}\n"
+    );
+}
+
+#[test]
+fn added_lines_keep_their_indentation_when_the_left_out_part_differs_between_lines() {
+    assert_eq!(updated("  a\n    b\n", "@@\n-a\n-b\n+c").unwrap(), "c\n");
+}
+
+#[test]
 fn all_changes_every_place_a_chunk_matches_and_notes_them() {
     let (contents, notes) = applied("x = 1\ny\nx = 1\n", "@@\n-x = 1\n+x = 2", ALL).unwrap();
 

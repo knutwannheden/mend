@@ -61,6 +61,8 @@ Matching:
   an anchor before and after a chunk tells apart text that occurs more than once.
   Whitespace at the ends and starts of lines is ignored only when no place matches
   exactly.
+  When the `-` lines all leave out the same indentation that the file has, the `+`
+  lines get it too.
   When a chunk matches no place or several, nothing is written and stderr names
   the candidate lines, or the closest place and its first differing line.
 

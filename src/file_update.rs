@@ -4,6 +4,7 @@ use crate::seek_sequence::Match;
 use crate::seek_sequence::seek_sequence;
 use crate::text_file::Replacement;
 use crate::text_file::SourceFile;
+use std::ops::Range;
 
 #[cfg(test)]
 #[path = "file_update_tests.rs"]
@@ -54,6 +55,8 @@ fn compute_replacements(
     let mut line_index: usize = 0;
     // The lines each chunk has matched so far, as (start, length).
     let mut matched: Vec<(usize, usize)> = Vec::new();
+    // The parts of lines that fragment chunks replace, as (line, byte range, new text).
+    let mut fragments: Vec<(usize, Range<usize>, &str)> = Vec::new();
 
     for (chunk_index, chunk) in chunks.iter().enumerate() {
         let chunk_label = format!("{path}: chunk {} of {}", chunk_index + 1, chunks.len());
@@ -152,8 +155,8 @@ fn compute_replacements(
         if !in_order {
             found = seek_sequence(original_lines, pattern, 0, chunk.is_end_of_file);
         }
-        // For a fragment, the lines it occurs in as they will read.
-        let mut rewritten: Vec<(usize, String)> = Vec::new();
+        // For a fragment, the parts of lines it occurs in.
+        let mut parts: Vec<(usize, Range<usize>)> = Vec::new();
         let places: Vec<usize> = match found {
             Match::One(start_idx) => vec![start_idx],
             Match::Many(found) if matching.all => {
@@ -235,14 +238,14 @@ fn compute_replacements(
                         line_numbers(&lines)
                     )));
                 }
-                for &line in &lines {
-                    let whole = &original_lines[line];
-                    rewritten.push((line, whole.replace(pattern[0].as_str(), &new_slice[0])));
-                }
+                parts = occurrences
+                    .iter()
+                    .map(|&(line, at)| (line, at..at + pattern[0].len()))
+                    .collect();
                 lines
             }
         };
-        if rewritten.is_empty()
+        if parts.is_empty()
             && let (Some(&start_idx), Some(context)) =
                 (places.first(), repeated_context_line(chunk, new_slice))
         {
@@ -250,22 +253,38 @@ fn compute_replacements(
         }
         for &start_idx in &places {
             let end_idx = start_idx + pattern.len();
-            if matched
+            let whole_lines = parts.is_empty();
+            let taken = matched
                 .iter()
                 .any(|&(start, len)| start_idx < start + len && start < end_idx)
-            {
+                || whole_lines
+                    && fragments
+                        .iter()
+                        .any(|&(line, ..)| start_idx <= line && line < end_idx);
+            if taken {
                 return Err(ApplyPatchError::DoesNotApply(format!(
                     "{chunk_label} matches only line {}, which an earlier chunk already matched",
                     start_idx + 1
                 )));
             }
-            matched.push((start_idx, pattern.len()));
-            match rewritten.iter().find(|(line, _)| *line == start_idx) {
-                Some((_, line)) => {
-                    replacements.push((start_idx, (start_idx, 1, vec![line.clone()])));
-                }
-                None => push_replacements(&mut replacements, chunk, pattern, new_slice, start_idx),
+            if whole_lines {
+                matched.push((start_idx, pattern.len()));
+                let indented = indented(&original_lines[start_idx..], pattern, new_slice);
+                let new_lines = indented.as_deref().unwrap_or(new_slice);
+                push_replacements(&mut replacements, chunk, pattern, new_lines, start_idx);
             }
+        }
+        for (line, part) in parts {
+            if fragments
+                .iter()
+                .any(|(at, done, _)| *at == line && done.start < part.end && part.start < done.end)
+            {
+                return Err(ApplyPatchError::DoesNotApply(format!(
+                    "{chunk_label} changes part of line {} that an earlier chunk already changed",
+                    line + 1
+                )));
+            }
+            fragments.push((line, part, &new_slice[0]));
         }
         if places.len() > 1 {
             notes.push(format!(
@@ -278,6 +297,21 @@ fn compute_replacements(
         if in_order && let Some(last) = places.last() {
             line_index = last + pattern.len();
         }
+    }
+
+    fragments.sort_by_key(|(line, part, _)| (*line, part.start));
+    for same_line in fragments.chunk_by(|a, b| a.0 == b.0) {
+        let line = same_line[0].0;
+        let whole = &original_lines[line];
+        let mut composed = String::new();
+        let mut from = 0;
+        for (_, part, new) in same_line {
+            composed.push_str(&whole[from..part.start]);
+            composed.push_str(new);
+            from = part.end;
+        }
+        composed.push_str(&whole[from..]);
+        replacements.push((line, (line, 1, vec![composed])));
     }
 
     // Replacements that start at the same line are applied with insertions first, then by
@@ -318,6 +352,31 @@ fn repeated_line_error(chunk_label: &str, line: usize) -> ApplyPatchError {
         "{chunk_label} repeats line {line} at the end of its added lines\n  \
          to insert before line {line}, give it as a context line after the `+` lines"
     ))
+}
+
+/// The added lines with the indentation that the chunk's lines leave out of the `lines` they
+/// matched, when every one leaves out the same. A patch that drops the indentation of the
+/// lines it replaces drops it from its added lines too.
+fn indented(lines: &[String], pattern: &[String], new_slice: &[String]) -> Option<Vec<String>> {
+    let indent = |s: &str| s.len() - s.trim_start().len();
+    let mut left_out: Option<&str> = None;
+    for (line, pat) in lines
+        .iter()
+        .zip(pattern)
+        .filter(|(_, pat)| !pat.trim().is_empty())
+    {
+        let extra = line[..indent(line)].strip_suffix(&pat[..indent(pat)])?;
+        if left_out.is_some_and(|seen| seen != extra) {
+            return None;
+        }
+        left_out = Some(extra);
+    }
+    let left_out = left_out.filter(|extra| !extra.is_empty())?;
+    let indented = new_slice.iter().map(|line| match line.trim().is_empty() {
+        true => line.clone(),
+        false => format!("{left_out}{line}"),
+    });
+    Some(indented.collect())
 }
 
 /// Adds the replacements that turn the lines a chunk matched at `start_idx` into its new
