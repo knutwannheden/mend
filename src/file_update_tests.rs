@@ -209,6 +209,18 @@ fn next_anchor_ends_the_lines_a_chunk_is_looked_for_in_first() {
 }
 
 #[test]
+fn anchor_of_a_later_chunk_ends_the_lines_when_the_next_chunk_has_none() {
+    assert_eq!(
+        updated(
+            "fn a() {\n    x\n}\nfn b() {\n    y\n}\nfn c() {\n    x\n}\n",
+            "@@ fn a() {\n-    x\n+    X\n@@\n-    y\n+    Y\n@@ fn c() {\n-    x\n+    Z"
+        )
+        .unwrap(),
+        "fn a() {\n    X\n}\nfn b() {\n    Y\n}\nfn c() {\n    Z\n}\n"
+    );
+}
+
+#[test]
 fn anchor_above_the_previous_chunk_leaves_the_search_where_it_is() {
     assert_eq!(
         updated(

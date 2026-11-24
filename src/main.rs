@@ -56,9 +56,10 @@ Patch format:
 
 Matching:
   Each chunk must match exactly one place. It is looked for below its @@ anchor (or
-  the chunk before it) and above the next chunk's @@ anchor, then down to the end of
-  the file, then in the whole file. The first of these that has a match decides, so
-  an anchor before and after a chunk tells apart text that occurs more than once.
+  the chunk before it) and above the next @@ anchor of a later chunk, then down to the
+  end of the file, then in the whole file. The first of these that has a match
+  decides, so an anchor before and after a chunk tells apart text that occurs more
+  than once.
   Whitespace at the ends and starts of lines is ignored only when no place matches
   exactly.
   When the `-` lines all leave out the same indentation that the file has, the `+`

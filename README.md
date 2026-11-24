@@ -75,7 +75,7 @@ A move prints `D` for the source and `A` or `M` for the destination. A path whos
 
 Each chunk of an `Update File` hunk has to match exactly one place. It is looked for in three steps, and the first step that has a match decides:
 
-1. below its own `@@` anchor, or below the previous chunk when it has none, and above the next chunk's `@@` anchor
+1. below its own `@@` anchor, or below the previous chunk when it has none, and above the next `@@` anchor of a later chunk
 2. from the same start down to the end of the file
 3. in the whole file, so a chunk may come before the previous one in the file, and may repeat its anchor
 
@@ -149,7 +149,7 @@ To change an existing file, pipe a patch to `patchwork` instead of using your ed
 
 - Run whatever depends on the edit with `&&` on the heredoc line. A command on the next line runs even when the patch failed.
 - Always quote the heredoc delimiter, as in `<<'EOF'`. Unquoted, the shell expands every `$name` and runs whatever stands in backticks inside the patch. For a shared path prefix pass `-C <dir>`.
-- Each chunk must match exactly one place. An `@@ <line>` anchor narrows where it is looked for, to below that line and above the next chunk's anchor. It may give just the start of its line, such as a method signature up to `(`, as long as only one line starts that way. A chunk of only `+` lines goes right after its anchor line. To insert before a line, give that line as a context line after the `+` lines. Before a function with a comment above it, that line is the comment's first line. On exit 1 nothing was written, and stderr says where the chunk came closest, so correct the chunk from that message.
+- Each chunk must match exactly one place. An `@@ <line>` anchor narrows where it is looked for, to below that line and above the next anchor of a later chunk. It may give just the start of its line, such as a method signature up to `(`, as long as only one line starts that way. A chunk of only `+` lines goes right after its anchor line. To insert before a line, give that line as a context line after the `+` lines. Before a function with a comment above it, that line is the comment's first line. On exit 1 nothing was written, and stderr says where the chunk came closest, so correct the chunk from that message.
 - For a temporary edit such as a mutation check, use `--revert --then '<command>'`. It restores the files once the command has finished.
 - `*** Add File:` on a path that exists replaces the whole file.
 - To change a few words inside a long line, pass `--fragment` and give only that part as one `-` line and one `+` line.

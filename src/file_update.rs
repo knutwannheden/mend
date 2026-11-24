@@ -41,7 +41,8 @@ pub struct Matching {
 /// `(start_index, old_len, new_lines)`.
 ///
 /// Every chunk has to match exactly one place. It is looked for between its search start
-/// and the next chunk's anchor, then down to the end of the file, then in the whole file.
+/// and the next anchor of a later chunk, then down to the end of the file, then in the whole
+/// file.
 /// The first of these that holds a match decides.
 fn compute_replacements(
     original_lines: &[String],
@@ -113,8 +114,9 @@ fn compute_replacements(
         let mut pattern: &[String] = &chunk.old_lines;
         let mut new_slice: &[String] = &chunk.new_lines;
         let next_anchor = chunks
-            .get(chunk_index + 1)
-            .and_then(|next| next.change_context.as_ref())
+            .iter()
+            .skip(chunk_index + 1)
+            .find_map(|later| later.change_context.as_ref())
             .and_then(
                 |anchor| match locate_anchor(original_lines, anchor, line_index) {
                     Anchor::Below(idx) => Some(idx),
