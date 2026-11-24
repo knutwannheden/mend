@@ -422,6 +422,18 @@ fn missing_anchor_is_reported() {
 }
 
 #[test]
+fn anchor_on_a_line_an_earlier_chunk_adds_is_pointed_out() {
+    assert_eq!(
+        error(
+            "fn a(x) {\n}\n",
+            "@@\n-fn a(x) {\n+fn a(y) {\n@@ fn a(y)\n+    body"
+        ),
+        "f.txt: chunk 2 of 2: anchor `@@ fn a(y)` not found\n  \
+         chunk 1 adds that line, but an anchor has to name a line the file has before the patch"
+    );
+}
+
+#[test]
 fn anchor_may_be_the_start_of_exactly_one_line() {
     let file = "class X {\n    int a() {\n        return 1;\n    }\n\n    \
                 private static int b(int x, int y) {\n        return 1;\n    }\n}\n";

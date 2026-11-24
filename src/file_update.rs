@@ -74,6 +74,17 @@ fn compute_replacements(
                 }
                 Anchor::Above(idx) => anchor_line = Some(idx),
                 Anchor::Missing => {
+                    if let Some(adder) = chunks[..chunk_index]
+                        .iter()
+                        .position(|earlier| adds_line(earlier, ctx_line))
+                    {
+                        return Err(ApplyPatchError::DoesNotApply(format!(
+                            "{chunk_label}: anchor `@@ {ctx_line}` not found\n  \
+                             chunk {} adds that line, but an anchor has to name a line the \
+                             file has before the patch",
+                            adder + 1
+                        )));
+                    }
                     return Err(ApplyPatchError::DoesNotApply(format!(
                         "{chunk_label}: anchor `@@ {ctx_line}` not found\n  \
                          an anchor has to be a whole line, or the start of exactly one line"
@@ -354,6 +365,16 @@ fn repeated_line_error(chunk_label: &str, line: usize) -> ApplyPatchError {
         "{chunk_label} repeats line {line} at the end of its added lines\n  \
          to insert before line {line}, give it as a context line after the `+` lines"
     ))
+}
+
+/// Whether `chunk` adds a line that `anchor` would name, as the whole line or its start.
+fn adds_line(chunk: &UpdateFileChunk, anchor: &str) -> bool {
+    let anchor = anchor.trim();
+    !anchor.is_empty()
+        && chunk
+            .new_lines
+            .iter()
+            .any(|line| line.trim_start().starts_with(anchor))
 }
 
 /// The added lines with the indentation that the chunk's lines leave out of the `lines` they
