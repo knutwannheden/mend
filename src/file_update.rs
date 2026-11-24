@@ -112,6 +112,12 @@ fn compute_replacements(
             {
                 return Err(repeated_line_error(&chunk_label, line));
             }
+            if anchor_line.is_some()
+                && !chunk.is_end_of_file
+                && copies_what_follows(&chunk.new_lines, &original_lines[at..])
+            {
+                return Err(copied_lines_error(&chunk_label, at));
+            }
             replacements.push((at, (at, 0, chunk.new_lines.clone())));
             continue;
         }
@@ -264,6 +270,20 @@ fn compute_replacements(
         {
             return Err(repeated_line_error(&chunk_label, start_idx + context));
         }
+        // The added lines that end the chunk, when they follow its last line and replace none.
+        let trailing = chunk
+            .context_line_indices
+            .iter()
+            .rfind(|&&(_, new)| new < new_slice.len())
+            .filter(|&&(old, _)| old + 1 == pattern.len())
+            .map(|&(_, new)| &new_slice[new + 1..]);
+        if parts.is_empty()
+            && let (Some(&start_idx), Some(trailing)) = (places.first(), trailing)
+            && let at = start_idx + pattern.len()
+            && copies_what_follows(trailing, &original_lines[at..])
+        {
+            return Err(copied_lines_error(&chunk_label, at));
+        }
         for &start_idx in &places {
             let end_idx = start_idx + pattern.len();
             let whole_lines = parts.is_empty();
@@ -339,11 +359,18 @@ fn compute_replacements(
     Ok((replacements, notes))
 }
 
-/// Whether an added line copies `above`, the line it is inserted below. Writing the line an
-/// insertion should go before as context, and then again at the end of the added lines, is a
+/// Whether an added line copies `existing`, a file line next to where it goes. Writing the line
+/// an insertion should go before as context, and then again at the end of the added lines, is a
 /// common mistake. Lines without a letter or digit, such as `}`, repeat legitimately.
-fn repeats(added: &str, above: &str) -> bool {
-    added.trim() == above.trim() && added.chars().any(char::is_alphanumeric)
+fn repeats(added: &str, existing: &str) -> bool {
+    added.trim() == existing.trim() && added.chars().any(char::is_alphanumeric)
+}
+
+/// Whether added lines begin with a copy of the first two of the `following` lines, as when
+/// lines already in the file are retyped as if they were context. One copied line is often a
+/// sibling's first line, such as an opening tag.
+fn copies_what_follows(added: &[String], following: &[String]) -> bool {
+    added.len() >= 2 && following.len() >= 2 && (0..2).all(|i| repeats(&added[i], &following[i]))
 }
 
 /// Returns the index in `old_lines` of the context line that the added lines ending the chunk
@@ -362,6 +389,15 @@ fn repeated_line_error(chunk_label: &str, line: usize) -> ApplyPatchError {
     ApplyPatchError::DoesNotApply(format!(
         "{chunk_label} repeats line {line} at the end of its added lines\n  \
          to insert before line {line}, give it as a context line after the `+` lines"
+    ))
+}
+
+/// `at` is the index of the first of the copied lines.
+fn copied_lines_error(chunk_label: &str, at: usize) -> ApplyPatchError {
+    ApplyPatchError::DoesNotApply(format!(
+        "{chunk_label} begins its added lines with a copy of {}, which follow them\n  \
+         to add lines further down, give the last line before them as context",
+        line_numbers(&[at, at + 1])
     ))
 }
 

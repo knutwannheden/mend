@@ -555,3 +555,35 @@ fn added_lines_followed_by_a_context_line_may_repeat_the_line_above_them() {
         "<deps>\n  <dep>\n  </dep>\n  <dep>\n  </dep>\n</deps>\n"
     );
 }
+
+#[test]
+fn added_lines_that_begin_with_a_copy_of_the_lines_after_them_are_rejected() {
+    let file = "#[test]\nfn x() {\n    let a = 1;\n    check(a);\n}\n";
+    let message = "f.txt: chunk 1 of 1 begins its added lines with a copy of lines 3, 4, \
+                   which follow them\n  \
+                   to add lines further down, give the last line before them as context";
+    assert_eq!(
+        error(
+            file,
+            "@@\n fn x() {\n+    let a = 1;\n+    check(a);\n+}\n+\n+fn y() {"
+        ),
+        message
+    );
+
+    assert_eq!(
+        error(file, "@@ fn x() {\n+    let a = 1;\n+    check(a);\n+}"),
+        message
+    );
+}
+
+#[test]
+fn added_lines_may_begin_with_a_copy_of_one_line_after_them() {
+    assert_eq!(
+        updated(
+            "<deps>\n  <dep>\n    <v>3</v>\n  </dep>\n</deps>\n",
+            "@@\n <deps>\n+  <dep>\n+    <v>4</v>\n+  </dep>"
+        )
+        .unwrap(),
+        "<deps>\n  <dep>\n    <v>4</v>\n  </dep>\n  <dep>\n    <v>3</v>\n  </dep>\n</deps>\n"
+    );
+}
