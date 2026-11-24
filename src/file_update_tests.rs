@@ -543,3 +543,15 @@ fn added_lines_may_repeat_a_closing_brace_or_put_the_copy_first() {
         "fn a() {\n}\nfn a() {\n}\n"
     );
 }
+
+#[test]
+fn added_lines_followed_by_a_context_line_may_repeat_the_line_above_them() {
+    assert_eq!(
+        updated(
+            "<deps>\n  <dep>\n  </dep>\n</deps>\n",
+            "@@\n   </dep>\n+  <dep>\n+  </dep>\n </deps>"
+        )
+        .unwrap(),
+        "<deps>\n  <dep>\n  </dep>\n  <dep>\n  </dep>\n</deps>\n"
+    );
+}

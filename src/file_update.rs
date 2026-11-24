@@ -346,17 +346,15 @@ fn repeats(added: &str, above: &str) -> bool {
     added.trim() == above.trim() && added.chars().any(char::is_alphanumeric)
 }
 
-/// Returns the index in `old_lines` of a context line that the run of added lines right after
-/// it ends by repeating.
+/// Returns the index in `old_lines` of the context line that the added lines ending the chunk
+/// follow and end by repeating. Added lines with a context line after them are placed as meant.
 fn repeated_context_line(chunk: &UpdateFileChunk, new_slice: &[String]) -> Option<usize> {
-    let contexts = &chunk.context_line_indices;
-    contexts.iter().enumerate().find_map(|(i, &(old, new))| {
-        let run_end = contexts
-            .get(i + 1)
-            .map_or(new_slice.len(), |&(_, next)| next);
-        let last = new_slice.get(run_end.checked_sub(1)?)?;
-        (run_end > new + 1 && repeats(last, new_slice.get(new)?)).then_some(old)
-    })
+    let &(old, new) = chunk
+        .context_line_indices
+        .iter()
+        .rfind(|&&(_, new)| new < new_slice.len())?;
+    let last = new_slice.last()?;
+    (new_slice.len() > new + 1 && repeats(last, &new_slice[new])).then_some(old)
 }
 
 fn repeated_line_error(chunk_label: &str, line: usize) -> ApplyPatchError {
