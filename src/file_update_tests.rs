@@ -197,14 +197,56 @@ fn next_anchor_ends_the_lines_a_chunk_is_looked_for_in_first() {
         "def a():\n    x = 2\ndef b():\n    x = 3\n"
     );
 
-    // The only match below the search start lies below the next anchor.
+    // The only match lies below the next anchor, and the chunk names no section of its own.
+    assert_eq!(
+        updated("# one\n# two\nt\nz\n", "@@\n-t\n+T\n@@ # two\n-z\n+Z").unwrap(),
+        "# one\n# two\nT\nZ\n"
+    );
+}
+
+#[test]
+fn anchored_chunk_that_matches_only_outside_its_section_is_rejected() {
+    let message = |chunk: &str, anchor: &str, line: usize| {
+        format!(
+            "f.txt: chunk {chunk} matches only outside the lines its anchor `@@ {anchor}` \
+             names, at line {line}\n  \
+             an anchored chunk has to lie below its anchor and above the next anchor"
+        )
+    };
+    assert_eq!(
+        error(
+            "[alpha]\nother\n[beta]\ntarget\nmarker\n",
+            "@@ [alpha]\n-target\n+changed\n@@ [beta]\n-marker\n+updated"
+        ),
+        message("1 of 2", "[alpha]", 4)
+    );
+
+    assert_eq!(
+        error("target\n[alpha]\nother\n", "@@ [alpha]\n-target\n+changed"),
+        message("1 of 1", "[alpha]", 1)
+    );
+
+    assert_eq!(
+        applied(
+            "[alpha]\nother\n[beta]\nx target y\nmarker\n",
+            "@@ [alpha]\n-target\n+changed\n@@ [beta]\n-marker\n+M",
+            FRAGMENTS
+        )
+        .unwrap_err()
+        .to_string(),
+        message("1 of 2", "[alpha]", 4)
+    );
+}
+
+#[test]
+fn chunk_that_starts_right_below_its_anchor_matches_there() {
     assert_eq!(
         updated(
-            "t\n# one\n# two\nt\nz\n",
-            "@@ # one\n-t\n+T\n@@ # two\n-z\n+Z"
+            "const E: i32 = 0;\n\nfn a() {}\n\nfn b() {}\n",
+            "@@ const E: i32 = 0;\n \n+fn new() {}\n+"
         )
         .unwrap(),
-        "t\n# one\n# two\nT\nZ\n"
+        "const E: i32 = 0;\n\nfn new() {}\n\nfn a() {}\n\nfn b() {}\n"
     );
 }
 

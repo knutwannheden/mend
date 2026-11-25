@@ -61,6 +61,8 @@ Matching:
   end of the file, then in the whole file. The first of these that has a match
   decides, so an anchor before and after a chunk tells apart text that occurs more
   than once.
+  A chunk with its own @@ anchor has to match between that anchor and the next one.
+  Of several places there, the one that starts right below its anchor wins.
   Whitespace at the ends and starts of lines is ignored only when no place matches
   exactly.
   When the `-` lines all leave out the same indentation that the file has, the `+`

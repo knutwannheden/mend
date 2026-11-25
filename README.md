@@ -81,6 +81,8 @@ Each chunk of an `Update File` hunk has to match exactly one place. It is looked
 
 An anchor before and after a chunk therefore tells apart text that occurs more than once. Lines are compared exactly first, then ignoring trailing whitespace, then ignoring leading and trailing whitespace, then with typographic punctuation folded to ASCII. The strictest comparison that matches anywhere decides.
 
+A chunk with its own anchor names a section, so steps 2 and 3 do not apply to it: a match only below the next anchor, or above its own, is rejected. Of several places in its section, the one that starts on the line right below its anchor wins.
+
 When a chunk's lines all leave out the same indentation that the file's lines have, its added lines get that indentation too.
 
 A chunk that matches several places is rejected with their line numbers.
