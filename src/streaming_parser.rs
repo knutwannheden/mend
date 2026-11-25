@@ -323,17 +323,6 @@ impl StreamingPatchParser {
                         self.state.mode = StreamingParserMode::UpdateFile { hunk_line_number };
                         return Ok(());
                     }
-
-                    if chunks.last().is_some_and(|chunk| {
-                        !chunk.old_lines.is_empty() || !chunk.new_lines.is_empty()
-                    }) {
-                        return Err(InvalidHunkError {
-                            message: format!(
-                                "Expected update hunk to start with a @@ context marker, got: '{line}'"
-                            ),
-                            line_number: self.line_number,
-                        });
-                    }
                 }
                 Err(InvalidHunkError {
                     message: format!(
@@ -840,7 +829,7 @@ mod tests {
         assert_eq!(
             parser.push_delta("*** Begin Patch\n*** Update File: file.txt\n@@\n-old\nbad\n"),
             Err(InvalidHunkError {
-                message: "Expected update hunk to start with a @@ context marker, got: 'bad'"
+                message: "Unexpected line found in update hunk: 'bad'. Every line should start with ' ' (context line), '+' (added line), or '-' (removed line)"
                     .to_string(),
                 line_number: 5,
             })
