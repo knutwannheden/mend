@@ -629,3 +629,22 @@ fn added_lines_may_begin_with_a_copy_of_one_line_after_them() {
         "<deps>\n  <dep>\n    <v>4</v>\n  </dep>\n  <dep>\n    <v>3</v>\n  </dep>\n</deps>\n"
     );
 }
+
+#[test]
+fn added_lines_that_split_a_comment_are_rejected() {
+    let file = "/// The class around\n/// a thing.\nfn f() {}\n";
+    let message = "f.txt: chunk 1 of 1 puts its added lines inside the comment at lines 1, 2\n  \
+                   to insert before the comment, give its first line as a context line after \
+                   the `+` lines";
+    assert_eq!(
+        error(file, "@@\n /// The class around\n+fn g() {}\n+"),
+        message
+    );
+
+    assert_eq!(error(file, "@@ /// The class around\n+fn g() {}"), message);
+
+    assert_eq!(
+        updated(file, "@@\n /// The class around\n+/// of").unwrap(),
+        "/// The class around\n/// of\n/// a thing.\nfn f() {}\n"
+    );
+}

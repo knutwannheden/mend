@@ -52,6 +52,8 @@ Patch format:
   Before a function with a comment above it, that line is the comment's first line.
   Added lines that end a chunk with a copy of the line just above them are rejected.
   So are added lines that begin with a copy of the two lines just below them.
+  So are added lines that go between two lines of a `//`, `# ` or `-- ` comment
+  without being comment lines themselves.
   A path is absolute or relative to the current directory, inside a repository or not.
   For a long shared prefix use -C <dir>, which leaves the heredoc quoted.
 

@@ -122,6 +122,12 @@ fn compute_replacements(
             {
                 return Err(copied_lines_error(&chunk_label, at));
             }
+            if anchor_line.is_some()
+                && !chunk.is_end_of_file
+                && splits_comment(original_lines, at, &chunk.new_lines)
+            {
+                return Err(split_comment_error(&chunk_label, at));
+            }
             replacements.push((at, (at, 0, chunk.new_lines.clone())));
             continue;
         }
@@ -324,7 +330,17 @@ fn compute_replacements(
                 matched.push((start_idx, pattern.len()));
                 let indented = indented(&original_lines[start_idx..], pattern, new_slice);
                 let new_lines = indented.as_deref().unwrap_or(new_slice);
+                let pushed = replacements.len();
                 push_replacements(&mut replacements, chunk, pattern, new_lines, start_idx);
+                if let Some(&(_, (at, _, _))) =
+                    replacements[pushed..]
+                        .iter()
+                        .find(|(_, (at, old_len, added))| {
+                            *old_len == 0 && splits_comment(original_lines, *at, added)
+                        })
+                {
+                    return Err(split_comment_error(&chunk_label, at));
+                }
             }
         }
         for (line, part) in parts {
@@ -409,6 +425,28 @@ fn repeated_line_error(chunk_label: &str, line: usize) -> ApplyPatchError {
     ApplyPatchError::DoesNotApply(format!(
         "{chunk_label} repeats line {line} at the end of its added lines\n  \
          to insert before line {line}, give it as a context line after the `+` lines"
+    ))
+}
+
+/// Whether lines `added` at `at` go between two lines of one comment without being comment
+/// lines themselves, as when an insertion meant to go before a doc comment is given its first
+/// line as context.
+fn splits_comment(lines: &[String], at: usize, added: &[String]) -> bool {
+    let comment = |line: &str| {
+        let line = line.trim_start();
+        line.starts_with("//") || line.starts_with("# ") || line.starts_with("-- ")
+    };
+    at > 0
+        && lines.get(at).is_some_and(|below| comment(below))
+        && comment(&lines[at - 1])
+        && added.first().is_some_and(|first| !comment(first))
+}
+
+fn split_comment_error(chunk_label: &str, at: usize) -> ApplyPatchError {
+    ApplyPatchError::DoesNotApply(format!(
+        "{chunk_label} puts its added lines inside the comment at {}\n  \
+         to insert before the comment, give its first line as a context line after the `+` lines",
+        line_numbers(&[at - 1, at])
     ))
 }
 
