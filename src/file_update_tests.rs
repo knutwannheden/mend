@@ -227,6 +227,14 @@ fn anchored_chunk_that_matches_only_outside_its_section_is_rejected() {
     );
 
     assert_eq!(
+        error(
+            "stray\n[alpha]\nfirst\nsecond\n",
+            "@@ [alpha]\n-first\n+updated\n@@ [alpha]\n-stray\n+escaped"
+        ),
+        message("2 of 2", "[alpha]", 1)
+    );
+
+    assert_eq!(
         applied(
             "[alpha]\nother\n[beta]\nx target y\nmarker\n",
             "@@ [alpha]\n-target\n+changed\n@@ [beta]\n-marker\n+M",
@@ -271,6 +279,15 @@ fn anchor_above_the_previous_chunk_leaves_the_search_where_it_is() {
         )
         .unwrap(),
         "class X {\n    one = 10;\n    two = 20;\n}\n"
+    );
+
+    assert_eq!(
+        updated(
+            "[alpha]\nfirst\nsecond\n",
+            "@@ [alpha]\n-second\n+S\n@@ [alpha]\n-first\n+F"
+        )
+        .unwrap(),
+        "[alpha]\nF\nS\n"
     );
 }
 

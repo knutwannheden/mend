@@ -66,8 +66,7 @@ fn compute_replacements(
         // above the search start is already satisfied, as for a chunk that repeats the
         // anchor of the chunk before it. Then its nearest occurrence above counts.
         let mut anchor_line = None;
-        // The chunk's anchor when it lies below the search start. The chunk then has to lie
-        // between it and the next anchor.
+        // The chunk's anchor. The chunk has to lie between it and the next anchor.
         let mut section_start = None;
         if let Some(ctx_line) = &chunk.change_context {
             match locate_anchor(original_lines, ctx_line, line_index) {
@@ -76,7 +75,10 @@ fn compute_replacements(
                     section_start = Some(idx);
                     line_index = idx + 1;
                 }
-                Anchor::Above(idx) => anchor_line = Some(idx),
+                Anchor::Above(idx) => {
+                    anchor_line = Some(idx);
+                    section_start = Some(idx);
+                }
                 Anchor::Missing => {
                     if let Some(adder) = chunks[..chunk_index]
                         .iter()
@@ -150,21 +152,25 @@ fn compute_replacements(
                     _ => None,
                 },
             );
-        // The match, and whether it lies only below the next anchor.
         let below = |pattern: &[String]| {
-            let to_the_end =
-                || seek_sequence(original_lines, pattern, line_index, chunk.is_end_of_file);
-            match next_anchor.filter(|_| !chunk.is_end_of_file) {
-                Some(end) => {
-                    match seek_sequence(&original_lines[..end], pattern, line_index, false) {
-                        Match::None => (to_the_end(), true),
-                        found => (found, false),
-                    }
+            let above_next_anchor = match next_anchor {
+                Some(end) if !chunk.is_end_of_file => {
+                    seek_sequence(&original_lines[..end], pattern, line_index, false)
                 }
-                None => (to_the_end(), false),
+                _ => Match::None,
+            };
+            match above_next_anchor {
+                Match::None => {
+                    seek_sequence(original_lines, pattern, line_index, chunk.is_end_of_file)
+                }
+                found => found,
             }
         };
-        let (mut found, mut past_next_anchor) = below(pattern);
+        let outside_section = |idx: usize| {
+            section_start
+                .is_some_and(|anchor| idx <= anchor || next_anchor.is_some_and(|end| idx >= end))
+        };
+        let mut found = below(pattern);
         // Dropping the only line would leave an empty pattern, which matches anywhere.
         if found == Match::None && pattern.len() > 1 && pattern.last().is_some_and(String::is_empty)
         {
@@ -172,7 +178,7 @@ fn compute_replacements(
             if new_slice.last().is_some_and(String::is_empty) {
                 new_slice = &new_slice[..new_slice.len() - 1];
             }
-            (found, past_next_anchor) = below(pattern);
+            found = below(pattern);
         }
         // Of several places, the one that starts right below the anchor is the one it names.
         if let (Match::Many(places), Some(anchor)) = (&found, section_start)
@@ -186,15 +192,13 @@ fn compute_replacements(
         if !in_order {
             found = seek_sequence(original_lines, pattern, 0, chunk.is_end_of_file);
         }
-        if section_start.is_some() && (past_next_anchor || !in_order) {
-            let outside = match &found {
-                Match::One(idx) => vec![*idx],
-                Match::Many(found) => found.clone(),
-                Match::None => Vec::new(),
-            };
-            if !outside.is_empty() {
-                return Err(outside_section_error(&chunk_label, chunk, &outside));
-            }
+        let places_found = match &found {
+            Match::One(idx) => vec![*idx],
+            Match::Many(found) => found.clone(),
+            Match::None => Vec::new(),
+        };
+        if !places_found.is_empty() && places_found.iter().all(|&idx| outside_section(idx)) {
+            return Err(outside_section_error(&chunk_label, chunk, &places_found));
         }
         // For a fragment, the parts of lines it occurs in.
         let mut parts: Vec<(usize, Range<usize>)> = Vec::new();
@@ -254,14 +258,13 @@ fn compute_replacements(
                     within(line_index, original_lines.len()),
                     everywhere.clone(),
                 ];
-                let (step, occurrences) = steps
+                let occurrences = steps
                     .into_iter()
-                    .enumerate()
-                    .find(|(_, step)| !step.is_empty())
+                    .find(|step| !step.is_empty())
                     .unwrap_or_default();
                 let mut lines: Vec<usize> = occurrences.iter().map(|&(line, _)| line).collect();
                 lines.dedup();
-                if section_start.is_some() && (step == 2 || step == 1 && next_anchor.is_some()) {
+                if !lines.is_empty() && lines.iter().all(|&line| outside_section(line)) {
                     return Err(outside_section_error(&chunk_label, chunk, &lines));
                 }
                 if occurrences.is_empty() {
