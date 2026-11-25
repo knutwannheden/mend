@@ -77,7 +77,7 @@ Running a command after the patch:
 Options:
   -C <dir>          Resolve the relative paths in the patch against <dir>
   --check           Report what the patch would change without writing anything
-  --diff            Print a unified diff of the changes instead of one status line per file
+  --diff            Print a diff in git's format instead of one status line per file
   --fragment        Let a chunk of one `-` and one `+` line replace part of a line when no
                     whole line matches; the part must occur once where it is looked for
   --all             Let a chunk that matches several places change all of them; stderr

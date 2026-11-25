@@ -161,13 +161,16 @@ fn test_diff_prints_a_unified_diff_in_place_of_status_lines() -> anyhow::Result<
         .current_dir(tmp.path())
         .arg("--diff")
         .write_stdin(
-            "*** Begin Patch\n*** Update File: f.txt\n@@\n-one\n+1\n*** Add File: g.txt\n+new\n*** Delete File: old.txt\n*** End Patch",
+            "*** Begin Patch\n*** Update File: f.txt\n@@\n-one\n+1\n*** Add File: g.txt\n+new\n*** Add File: empty.txt\n*** Delete File: old.txt\n*** End Patch",
         )
         .assert()
         .success()
         .stdout(
-            "--- a/f.txt\n+++ b/f.txt\n@@ -1,2 +1,2 @@\n-one\n+1\n two\n\
+            "diff --git a/f.txt b/f.txt\n--- a/f.txt\n+++ b/f.txt\n@@ -1,2 +1,2 @@\n-one\n+1\n two\n\
+             diff --git a/g.txt b/g.txt\nnew file mode 100644\n\
              --- /dev/null\n+++ b/g.txt\n@@ -0,0 +1 @@\n+new\n\
+             diff --git a/empty.txt b/empty.txt\nnew file mode 100644\n\
+             diff --git a/old.txt b/old.txt\ndeleted file mode 100644\n\
              --- a/old.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-bye\n",
         );
 
@@ -187,6 +190,25 @@ fn test_diff_prints_a_unified_diff_in_place_of_status_lines() -> anyhow::Result<
             "--- {0}\n+++ {0}\n@@ -1,2 +1,2 @@\n 1\n-two\n+2\n",
             absolute.display()
         ));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn test_diff_gives_a_deleted_executable_its_mode() -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempdir()?;
+    fs::write(tmp.path().join("run.sh"), "")?;
+    fs::set_permissions(tmp.path().join("run.sh"), fs::Permissions::from_mode(0o755))?;
+
+    apply_patch_command()?
+        .current_dir(tmp.path())
+        .arg("--diff")
+        .write_stdin("*** Begin Patch\n*** Delete File: run.sh\n*** End Patch")
+        .assert()
+        .success()
+        .stdout("diff --git a/run.sh b/run.sh\ndeleted file mode 100755\n");
     Ok(())
 }
 

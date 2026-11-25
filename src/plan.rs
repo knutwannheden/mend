@@ -45,8 +45,13 @@ impl FileChange {
         &self.label
     }
 
-    /// A unified diff of the change, with `/dev/null` standing for a path that does not exist.
+    /// A diff of the change in git's format, with `/dev/null` standing for a path that does not
+    /// exist. The `diff --git` line and its mode line carry a file created or deleted empty, which
+    /// has no hunk. An absolute path gets no `diff --git` line, since git takes none.
     pub fn unified_diff(&self) -> String {
+        if self.before == self.after {
+            return String::new();
+        }
         let name = |contents: &Option<Vec<u8>>, prefix: &str| match contents {
             Some(_) if self.label.is_absolute() => self.label.display().to_string(),
             Some(_) => format!("{prefix}/{}", self.label.display()),
@@ -55,10 +60,35 @@ impl FileChange {
         let text = |contents: &Option<Vec<u8>>| {
             String::from_utf8_lossy(contents.as_deref().unwrap_or_default()).into_owned()
         };
-        TextDiff::from_lines(&text(&self.before), &text(&self.after))
+        let mut diff = String::new();
+        if !self.label.is_absolute() {
+            let path = self.label.display();
+            diff.push_str(&format!("diff --git a/{path} b/{path}\n"));
+            match (&self.before, &self.after) {
+                (None, _) => diff.push_str("new file mode 100644\n"),
+                (_, None) => diff.push_str(&format!("deleted file mode {}\n", self.mode())),
+                _ => {}
+            }
+        }
+        let hunks = TextDiff::from_lines(&text(&self.before), &text(&self.after))
             .unified_diff()
             .header(&name(&self.before, "a"), &name(&self.after, "b"))
-            .to_string()
+            .to_string();
+        diff + &hunks
+    }
+
+    /// The file's mode as git writes it.
+    fn mode(&self) -> &'static str {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Some(permissions) = &self.permissions
+                && permissions.mode() & 0o111 != 0
+            {
+                return "100755";
+            }
+        }
+        "100644"
     }
 
     /// Where new contents go, which for a symbolic link is the file it points to.

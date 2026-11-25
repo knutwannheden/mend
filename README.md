@@ -32,7 +32,7 @@ The patch is read from the `PATCH` argument, or from stdin when there is none. A
 |---|---|
 | `-C <dir>` | Resolves the relative paths in the patch against `<dir>`. |
 | `--check` | Reports what the patch would change without writing anything. |
-| `--diff` | Prints a unified diff of the changes instead of the status lines. `git apply -R` reverses it. |
+| `--diff` | Prints a diff in git's format instead of the status lines. `git apply -R` reverses it. |
 | `--fragment` | Lets a chunk of one `-` and one `+` line replace part of a line. It applies when no whole line matches, and the part has to occur exactly once where it is looked for. Several chunks may replace different parts of one line. |
 | `--all` | Lets a chunk that matches several places change all of them. Standard error then names the lines. |
 | `--then <command>` | Runs `<command>` with `sh -c` once the patch is applied. When the command fails the edits stay in place. |
