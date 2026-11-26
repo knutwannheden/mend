@@ -115,6 +115,7 @@ fn compute_replacements(
             if let (Some(line), Some(last)) = (anchor_line, chunk.new_lines.last())
                 && !chunk.is_end_of_file
                 && repeats(last, &original_lines[line])
+                && opens_block(original_lines, line)
             {
                 return Err(repeated_line_error(&chunk_label, line));
             }
@@ -324,6 +325,7 @@ fn compute_replacements(
         if parts.is_empty()
             && let (Some(&start_idx), Some(context)) =
                 (places.first(), repeated_context_line(chunk, new_slice))
+            && opens_block(original_lines, start_idx + context)
         {
             return Err(repeated_line_error(&chunk_label, start_idx + context));
         }
@@ -482,19 +484,26 @@ fn splits_comment(lines: &[String], at: usize, added: &[String]) -> bool {
         && added.first().is_some_and(|first| !comment(first))
 }
 
-/// Whether lines `added` at `at` go right below a line that opens a block, one the next line is
-/// indented deeper than, without being indented deeper themselves. They then cannot be the
-/// block's contents, and were meant to go before the line.
+/// Whether the line at `idx` opens a block, one the next line is indented deeper than. Lines
+/// added below it at its own level were meant to go before it, whereas a block's last line, such
+/// as a closing tag, is legitimately repeated by a sibling added after it.
+fn opens_block(lines: &[String], idx: usize) -> bool {
+    let indent = |line: &str| line.len() - line.trim_start().len();
+    match (lines.get(idx), lines.get(idx + 1)) {
+        (Some(line), Some(next)) => !next.trim().is_empty() && indent(next) > indent(line),
+        _ => false,
+    }
+}
+
+/// Whether lines `added` at `at` go right below a line that opens a block without being indented
+/// deeper themselves. They then cannot be the block's contents.
 fn goes_inside_block(lines: &[String], at: usize, added: &[String]) -> bool {
     let indent = |line: &str| line.len() - line.trim_start().len();
-    let (Some(opener), Some(next)) = (at.checked_sub(1).and_then(|i| lines.get(i)), lines.get(at))
-    else {
+    let Some(opener) = at.checked_sub(1).filter(|&idx| opens_block(lines, idx)) else {
         return false;
     };
     let first = added.iter().find(|line| !line.trim().is_empty());
-    !next.trim().is_empty()
-        && indent(next) > indent(opener)
-        && first.is_some_and(|first| indent(first) <= indent(opener))
+    first.is_some_and(|first| indent(first) <= indent(&lines[opener]))
 }
 
 fn inside_block_error(chunk_label: &str, at: usize) -> ApplyPatchError {

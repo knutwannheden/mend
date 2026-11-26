@@ -605,7 +605,7 @@ fn addition_only_chunk_goes_right_after_its_anchor() {
 
 #[test]
 fn added_lines_that_repeat_the_line_above_them_are_rejected() {
-    let file = "fn a() {\n}\n\nfn pct(n: u64) {\n}\n";
+    let file = "fn a() {\n}\n\nfn pct(n: u64) {\n    n\n}\n";
     let hint = "\n  to insert before line 4, give it as a context line after the `+` lines";
     assert_eq!(
         error(
@@ -644,6 +644,30 @@ fn added_lines_followed_by_a_context_line_may_repeat_the_line_above_them() {
         )
         .unwrap(),
         "<deps>\n  <dep>\n  </dep>\n  <dep>\n  </dep>\n</deps>\n"
+    );
+}
+
+#[test]
+fn added_lines_may_repeat_the_line_above_them_when_it_opens_no_block() {
+    let file = "Template q = Template.builder()\n        .parser(p).build();\nTemplate r = null;\n";
+    let expected = "Template q = Template.builder()\n        .parser(p).build();\n\
+                    Template s = Template.builder()\n        .parser(p).build();\nTemplate r = null;\n";
+    assert_eq!(
+        updated(
+            file,
+            "@@         .parser(p).build();\n+Template s = Template.builder()\n+        .parser(p).build();"
+        )
+        .unwrap(),
+        expected
+    );
+
+    assert_eq!(
+        updated(
+            file,
+            "@@\n         .parser(p).build();\n+Template s = Template.builder()\n+        .parser(p).build();"
+        )
+        .unwrap(),
+        expected
     );
 }
 

@@ -51,7 +51,8 @@ Patch format:
   file when it has no anchor or ends with *** End of File.
   To insert before a line, give that line as a context line after the `+` lines.
   Before a function with a comment above it, that line is the comment's first line.
-  Added lines that end a chunk with a copy of the line just above them are rejected.
+  Added lines that end a chunk with a copy of the line just above them are rejected
+  when that line opens a block, one the next line is indented deeper than.
   So are added lines that begin with a copy of the two lines just below them.
   So are added lines that go between two lines of a `//`, `# ` or `-- ` comment
   without being comment lines themselves.
