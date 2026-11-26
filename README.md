@@ -136,7 +136,7 @@ An agent will not pick the tool up by itself, and it does not read `--help` unpr
 ````markdown
 ## Editing files
 
-To change an existing file, pipe a patch to `patchwork` instead of using your edit tool or a script that swaps one piece of text for another. It checks every chunk before writing anything, and restores the files already written if a later write fails.
+Use `patchwork` for hand-written changes to existing files, in place of your edit tool or a script that swaps one piece of text for another. It checks every chunk before it writes, and restores written files if a later write fails.
 
     patchwork <<'EOF' && make test
     *** Begin Patch
@@ -149,14 +149,14 @@ To change an existing file, pipe a patch to `patchwork` instead of using your ed
     *** End Patch
     EOF
 
-- Run whatever depends on the edit with `&&` on the heredoc line. A command on the next line runs even when the patch failed.
-- Always quote the heredoc delimiter, as in `<<'EOF'`. Unquoted, the shell expands every `$name` and runs whatever stands in backticks inside the patch. For a shared path prefix pass `-C <dir>`.
-- Each chunk must match exactly one place. An `@@ <line>` anchor names a line of the file, whole or just its start, such as a method signature up to `(`, as long as only one line starts that way. A chunk that repeats the anchor line among its own lines is placed around it, so it can change that line or add lines before it. Any other chunk has to match below the anchor and above the next one, and a chunk of only `+` lines goes right after the anchor line. To insert before a line, give that line as a context line after the `+` lines. Before a function with a comment above it, that line is the comment's first line. On exit 1 nothing was written, and stderr says where the chunk came closest, so correct the chunk from that message.
-- For a temporary edit such as a mutation check, use `--revert --then '<command>'`. It restores the files once the command has finished.
-- `*** Add File:` on a path that exists replaces the whole file.
-- To change a few words inside a long line, pass `--fragment` and give only that part as one `-` line and one `+` line.
-- To change every place a chunk matches, pass `--all`.
-- Preview a patch with `--check --diff`, which prints the change as a diff without writing it. `patchwork --help` has the rest.
+- Always quote the delimiter as `<<'EOF'`. Unquoted, the shell expands `$name`, backticks and `$(…)` inside the patch. For a path prefix, pass `-C <dir>`.
+- Chain what depends on the edit with `&&` on the heredoc line. A command on the next line runs even when the patch failed.
+- Each chunk matches exactly one place. Added lines go exactly where they stand among the chunk's lines.
+- An `@@ <line>` anchor names one line of the file, whole or by its start, such as a signature up to `(`. A chunk that repeats the anchor line is placed around it, so it can change that line or add lines before it. Any other chunk goes below the anchor and above the next one. A chunk of only `+` lines goes right after the anchor.
+- To insert before a line, give that line as context after the `+` lines. Before a function, that is the first line of its comment or attribute.
+- Exit 1 means nothing was written. Stderr names the candidate places or the closest one, so correct the chunk from it.
+- `--check --diff` previews a patch. `--revert --then '<command>'` makes a temporary edit such as a mutation check.
+- `--fragment` lets one `-` and one `+` line replace part of a long line. `--all` changes every match. `*** Add File:` on an existing path replaces the file. `patchwork --help` has the rest.
 ````
 
 ## Building
