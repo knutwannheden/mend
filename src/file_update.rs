@@ -170,7 +170,26 @@ fn compute_replacements(
             section_start
                 .is_some_and(|anchor| idx <= anchor || next_anchor.is_some_and(|end| idx >= end))
         };
-        let mut found = below(pattern);
+        // A chunk whose own lines include its anchor line is placed with that line on the
+        // anchor, so the anchor may be changed, removed or have lines added before it.
+        let around = |pattern: &[String]| {
+            let anchor = section_start?;
+            let named = chunk.change_context.as_deref()?.trim();
+            let offset = pattern
+                .iter()
+                .position(|line| !named.is_empty() && line.trim_start().starts_with(named))?;
+            let start = anchor.checked_sub(offset)?;
+            let end = start + pattern.len();
+            let fits = end <= original_lines.len()
+                && (!chunk.is_end_of_file || end == original_lines.len())
+                && seek_sequence(&original_lines[start..end], pattern, 0, false) == Match::One(0);
+            fits.then_some(start)
+        };
+        let placed_around = around(pattern);
+        let mut found = match placed_around {
+            Some(start) => Match::One(start),
+            None => below(pattern),
+        };
         // Dropping the only line would leave an empty pattern, which matches anywhere.
         if found == Match::None && pattern.len() > 1 && pattern.last().is_some_and(String::is_empty)
         {
@@ -197,7 +216,10 @@ fn compute_replacements(
             Match::Many(found) => found.clone(),
             Match::None => Vec::new(),
         };
-        if !places_found.is_empty() && places_found.iter().all(|&idx| outside_section(idx)) {
+        if placed_around.is_none()
+            && !places_found.is_empty()
+            && places_found.iter().all(|&idx| outside_section(idx))
+        {
             return Err(outside_section_error(&chunk_label, chunk, &places_found));
         }
         // For a fragment, the parts of lines it occurs in.
@@ -367,7 +389,7 @@ fn compute_replacements(
         }
         // A chunk found above the search start leaves the search where it was.
         if in_order && let Some(last) = places.last() {
-            line_index = last + pattern.len();
+            line_index = line_index.max(last + pattern.len());
         }
     }
 

@@ -259,6 +259,38 @@ fn chunk_that_starts_right_below_its_anchor_matches_there() {
 }
 
 #[test]
+fn chunk_that_includes_its_anchor_line_is_placed_around_it() {
+    let file = "import os\n\ndef polygons(g):\n    return []\n";
+    assert_eq!(
+        updated(
+            file,
+            "@@ def polygons(g):\n+def v(m):\n+    return m\n+\n def polygons(g):"
+        )
+        .unwrap(),
+        "import os\n\ndef v(m):\n    return m\n\ndef polygons(g):\n    return []\n"
+    );
+
+    assert_eq!(
+        updated(
+            file,
+            "@@ def polygons(\n-def polygons(g):\n-    return []\n+def polygons(h):\n+    return [h]"
+        )
+        .unwrap(),
+        "import os\n\ndef polygons(h):\n    return [h]\n"
+    );
+
+    let decorated = "import os\n\n@cache\ndef polygons(g):\n    return []\n";
+    assert_eq!(
+        updated(
+            decorated,
+            "@@ def polygons(g):\n+# Areas.\n @cache\n def polygons(g):"
+        )
+        .unwrap(),
+        "import os\n\n# Areas.\n@cache\ndef polygons(g):\n    return []\n"
+    );
+}
+
+#[test]
 fn anchor_of_a_later_chunk_ends_the_lines_when_the_next_chunk_has_none() {
     assert_eq!(
         updated(

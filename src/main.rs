@@ -65,6 +65,8 @@ Matching:
   than once.
   A chunk with its own @@ anchor has to match between that anchor and the next one.
   Of several places there, the one that starts right below its anchor wins.
+  A chunk whose own lines include its anchor line is placed with that line on the
+  anchor, so it may change the anchor line or add lines before it.
   Whitespace at the ends and starts of lines is ignored only when no place matches
   exactly.
   When the `-` lines all leave out the same indentation that the file has, the `+`
