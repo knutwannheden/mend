@@ -1,4 +1,5 @@
 mod cli;
+mod mcp;
 mod scenarios;
 #[cfg(unix)]
 mod then;

@@ -11,6 +11,7 @@ doctest = false
 
 [dependencies]
 similar = "2"
+serde_json = "1"
 thiserror = "2"
 
 [target.'cfg(unix)'.dependencies]

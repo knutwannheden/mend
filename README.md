@@ -129,6 +129,24 @@ src/main.rs: chunk 2 of 3 matches nothing
 - Standard output has no `Success.` header, and failures have distinct exit statuses.
 - A patch has to reach the command through a shell. The heredoc text `<<'EOF'` passed literally as an argument is not unwrapped, and the `*** Environment ID:` line is not accepted.
 
+## As a tool
+
+`patchwork mcp` serves a `patch` tool over the Model Context Protocol, so an agent passes the patch text as an argument instead of through a quoted heredoc. The tool takes `patch` and optionally `cwd`, `check`, `diff`, `fragment` and `all`, and returns what the command would print. A failed call wrote nothing and is marked as an error. It runs no commands, so `--then` stays with the command line.
+
+For Claude Code:
+
+```sh
+claude mcp add --scope user patchwork -- patchwork mcp
+```
+
+For Codex, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.patchwork]
+command = "patchwork"
+args = ["mcp"]
+```
+
 ## Instructions for your agent
 
 An agent will not pick the tool up by itself, and it does not read `--help` unprompted. Put a section like this in `CLAUDE.md`, `AGENTS.md` or whatever file your agent reads.

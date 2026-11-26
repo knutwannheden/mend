@@ -14,6 +14,8 @@ use patchwork::Matching;
 use patchwork::ParseError;
 use patchwork::Plan;
 
+mod mcp;
+
 const USAGE: &str = "Usage: patchwork [-C <dir>] [--check] [--diff] [--fragment] [--all] [--then <command> [--revert]] [PATCH]";
 
 const HELP: &str = "\
@@ -97,6 +99,11 @@ Options:
   -h, --help        Print this help
   -V, --version     Print the version
 
+As a tool:
+  `patchwork mcp` serves a `patch` tool over the Model Context Protocol on stdin and
+  stdout. It takes the patch text as an argument, along with `cwd`, `check`, `diff`,
+  `fragment` and `all`, and returns what the command would print.
+
 Output:
   One line per changed path on stdout: `A <path>`, `M <path>` or `D <path>`.
 
@@ -137,6 +144,9 @@ fn main() -> ExitCode {
     else {
         return usage_error("Arguments have to be valid UTF-8");
     };
+    if args == ["mcp"] {
+        return mcp::serve();
+    }
     let mut options = match parse_args(args.into_iter()) {
         Ok(Some(options)) => options,
         Ok(None) => return ExitCode::SUCCESS,
@@ -162,22 +172,27 @@ fn main() -> ExitCode {
     match run(&patch, options) {
         Ok(exit_code) => exit_code,
         Err(error) => {
-            match &error {
-                ApplyPatchError::ParseError(ParseError::InvalidPatchError(message)) => {
-                    eprintln!("Invalid patch: {message}")
-                }
-                ApplyPatchError::ParseError(ParseError::InvalidHunkError {
-                    message,
-                    line_number,
-                }) => eprintln!("Invalid patch hunk on line {line_number}: {message}"),
-                other => eprintln!("{other}"),
-            }
+            eprintln!("{}", describe(&error));
             ExitCode::from(match error {
                 ApplyPatchError::DoesNotApply(_) => DOES_NOT_APPLY,
                 ApplyPatchError::ParseError(_) => MALFORMED,
                 ApplyPatchError::IoError { .. } | ApplyPatchError::Restore(_) => IO_FAILURE,
             })
         }
+    }
+}
+
+/// The message for `error`, as stderr and the tool give it.
+fn describe(error: &ApplyPatchError) -> String {
+    match error {
+        ApplyPatchError::ParseError(ParseError::InvalidPatchError(message)) => {
+            format!("Invalid patch: {message}")
+        }
+        ApplyPatchError::ParseError(ParseError::InvalidHunkError {
+            message,
+            line_number,
+        }) => format!("Invalid patch hunk on line {line_number}: {message}"),
+        other => other.to_string(),
     }
 }
 
