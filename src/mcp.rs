@@ -90,7 +90,10 @@ fn tool() -> Value {
     let flag = |description: &str| json!({"type": "boolean", "description": description});
     json!({
         "name": "patch",
+        "title": "Apply patch",
         "description": DESCRIPTION,
+        // Codex weighs these when it decides whether a call needs the user's approval.
+        "annotations": {"readOnlyHint": false, "destructiveHint": true, "openWorldHint": false},
         "inputSchema": {
             "type": "object",
             "properties": {

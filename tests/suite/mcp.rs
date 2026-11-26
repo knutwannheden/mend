@@ -47,6 +47,11 @@ fn test_mcp_lists_the_patch_tool_and_applies_a_patch_in_the_given_directory() ->
     assert_eq!(replies[0]["result"]["protocolVersion"], "2025-06-18");
     assert_eq!(replies[0]["result"]["serverInfo"]["name"], "patchwork");
     assert_eq!(replies[1]["result"]["tools"][0]["name"], "patch");
+    assert_eq!(replies[1]["result"]["tools"][0]["title"], "Apply patch");
+    assert_eq!(
+        replies[1]["result"]["tools"][0]["annotations"],
+        json!({"readOnlyHint": false, "destructiveHint": true, "openWorldHint": false})
+    );
     assert_eq!(
         replies[2],
         json!({"jsonrpc": "2.0", "id": 3,
