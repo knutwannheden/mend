@@ -697,3 +697,22 @@ fn added_lines_that_split_a_comment_are_rejected() {
         "/// The class around\n/// of\n/// a thing.\nfn f() {}\n"
     );
 }
+
+#[test]
+fn added_lines_that_go_inside_a_block_at_its_opening_lines_level_are_rejected() {
+    let file = "#[test]\nfn existing() {\n    run();\n}\n";
+    let message = "f.txt: chunk 1 of 1 puts its added lines inside the block line 2 opens\n  \
+                   to insert before it, give its first line, or that of an attribute or comment \
+                   above it, as a context line after the `+` lines";
+    assert_eq!(
+        error(file, "@@ #[test]\n fn existing() {\n+fn new() {}\n+"),
+        message
+    );
+
+    assert_eq!(error(file, "@@ fn existing() {\n+fn new() {}"), message);
+
+    assert_eq!(
+        updated(file, "@@ fn existing() {\n+    setup();").unwrap(),
+        "#[test]\nfn existing() {\n    setup();\n    run();\n}\n"
+    );
+}

@@ -55,6 +55,8 @@ Patch format:
   So are added lines that begin with a copy of the two lines just below them.
   So are added lines that go between two lines of a `//`, `# ` or `-- ` comment
   without being comment lines themselves.
+  So are added lines right below a line that opens a block, one the next line is
+  indented deeper than, when they are not indented deeper themselves.
   A path is absolute or relative to the current directory, inside a repository or not.
   For a long shared prefix use -C <dir>, which leaves the heredoc quoted.
 

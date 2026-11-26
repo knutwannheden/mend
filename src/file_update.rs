@@ -130,6 +130,12 @@ fn compute_replacements(
             {
                 return Err(split_comment_error(&chunk_label, at));
             }
+            if anchor_line.is_some()
+                && !chunk.is_end_of_file
+                && goes_inside_block(original_lines, at, &chunk.new_lines)
+            {
+                return Err(inside_block_error(&chunk_label, at));
+            }
             replacements.push((at, (at, 0, chunk.new_lines.clone())));
             continue;
         }
@@ -366,6 +372,15 @@ fn compute_replacements(
                 {
                     return Err(split_comment_error(&chunk_label, at));
                 }
+                if let Some(&(_, (at, _, _))) =
+                    replacements[pushed..]
+                        .iter()
+                        .find(|(_, (at, old_len, added))| {
+                            *old_len == 0 && goes_inside_block(original_lines, *at, added)
+                        })
+                {
+                    return Err(inside_block_error(&chunk_label, at));
+                }
             }
         }
         for (line, part) in parts {
@@ -465,6 +480,29 @@ fn splits_comment(lines: &[String], at: usize, added: &[String]) -> bool {
         && lines.get(at).is_some_and(|below| comment(below))
         && comment(&lines[at - 1])
         && added.first().is_some_and(|first| !comment(first))
+}
+
+/// Whether lines `added` at `at` go right below a line that opens a block, one the next line is
+/// indented deeper than, without being indented deeper themselves. They then cannot be the
+/// block's contents, and were meant to go before the line.
+fn goes_inside_block(lines: &[String], at: usize, added: &[String]) -> bool {
+    let indent = |line: &str| line.len() - line.trim_start().len();
+    let (Some(opener), Some(next)) = (at.checked_sub(1).and_then(|i| lines.get(i)), lines.get(at))
+    else {
+        return false;
+    };
+    let first = added.iter().find(|line| !line.trim().is_empty());
+    !next.trim().is_empty()
+        && indent(next) > indent(opener)
+        && first.is_some_and(|first| indent(first) <= indent(opener))
+}
+
+fn inside_block_error(chunk_label: &str, at: usize) -> ApplyPatchError {
+    ApplyPatchError::DoesNotApply(format!(
+        "{chunk_label} puts its added lines inside the block line {at} opens\n  \
+         to insert before it, give its first line, or that of an attribute or comment above it, \
+         as a context line after the `+` lines"
+    ))
 }
 
 fn split_comment_error(chunk_label: &str, at: usize) -> ApplyPatchError {
