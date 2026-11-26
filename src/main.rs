@@ -41,8 +41,9 @@ Patch format:
   *** Add File: <path>     Creates a file from the `+` lines that follow, or replaces all of an existing one
   *** Delete File: <path>  Deletes a file
   @@                       Starts a chunk
-  @@ <line>                Starts a chunk that is searched below <line>, which may be
-                           given as just the start of exactly one line
+  @@ <line>                Starts a chunk at <line>: around it when the chunk repeats
+                           it, else below it. <line> may be given as just the start
+                           of exactly one line
   *** End of File          After a chunk: it must match at the end of the file
 
   A chunk line starts with a space (context), `-` (removed) or `+` (added).
