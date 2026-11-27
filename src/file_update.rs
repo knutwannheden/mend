@@ -303,7 +303,8 @@ fn compute_replacements(
                     return Err(outside_section_error(&chunk_label, chunk, &lines));
                 }
                 if occurrences.is_empty() {
-                    let reason = part_of_a_line(original_lines, pattern)
+                    let reason = given_twice(chunk, original_lines, pattern)
+                        .or_else(|| part_of_a_line(original_lines, pattern))
                         .or_else(|| closest_place(original_lines, pattern));
                     return Err(ApplyPatchError::DoesNotApply(match reason {
                         Some(reason) => format!("{chunk_label} matches nothing\n  {reason}"),
@@ -481,6 +482,30 @@ fn repeated_context_line(chunk: &UpdateFileChunk, new_slice: &[String]) -> Optio
         .rfind(|&&(_, new)| new < new_slice.len())?;
     let last = new_slice.last()?;
     (new_slice.len() > new + 1 && repeats(last, &new_slice[new])).then_some(old)
+}
+
+/// Names the line a chunk gives as its first context line and again as a later one, when the
+/// file holds it once. That happens when the line to insert before is also written above the
+/// `+` lines.
+fn given_twice(chunk: &UpdateFileChunk, lines: &[String], pattern: &[String]) -> Option<String> {
+    let first = pattern.first()?;
+    let [(0, 0), later @ ..] = chunk.context_line_indices.as_slice() else {
+        return None;
+    };
+    let again =
+        |&(old, _): &(usize, usize)| pattern.get(old).is_some_and(|line| repeats(line, first));
+    if !later.iter().any(again) {
+        return None;
+    }
+    let mut holders = (0..lines.len()).filter(|&idx| lines[idx].trim() == first.trim());
+    let (Some(line), None) = (holders.next(), holders.next()) else {
+        return None;
+    };
+    let line = line + 1;
+    Some(format!(
+        "it gives line {line} both before and after its added lines, so the file would need it \
+         twice\n  to insert before line {line}, give it only after the `+` lines"
+    ))
 }
 
 fn repeated_line_error(chunk_label: &str, line: usize) -> ApplyPatchError {

@@ -637,6 +637,32 @@ fn added_lines_that_repeat_the_line_above_them_are_rejected() {
 }
 
 #[test]
+fn chunk_that_gives_a_line_before_and_after_its_added_lines_is_pointed_out() {
+    let file = "class A {\n    @Override\n    int a() {}\n\n    @Override\n    int b() {}\n}\n";
+    assert_eq!(
+        error(
+            file,
+            "@@     @Override\n     int b() {}\n+    int c() {}\n+\n     @Override\n     int b() {}"
+        ),
+        "f.txt: chunk 1 of 1 matches nothing\n  \
+         it gives line 6 both before and after its added lines, so the file would need it twice\n  \
+         to insert before line 6, give it only after the `+` lines"
+    );
+}
+
+#[test]
+fn line_given_before_and_after_added_lines_that_the_file_has_twice_is_not_pointed_out() {
+    let file = "fn a() {}\nfn b() {}\nfn a() {}\n";
+    assert_eq!(
+        error(file, "@@\n fn a() {}\n+fn c() {}\n fn a() {}"),
+        "f.txt: chunk 1 of 1 matches nothing\n  \
+         closest is at line 1 (1 of 2 lines match); line 2 differs:\n    \
+         patch: fn a() {}\n    \
+         file:  fn b() {}"
+    );
+}
+
+#[test]
 fn added_lines_may_repeat_a_closing_brace_or_put_the_copy_first() {
     let file = "fn a() {\n}\n";
     assert_eq!(
