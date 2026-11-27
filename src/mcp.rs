@@ -31,11 +31,11 @@ before anything is written, and nothing is written when one does not fit.
 *** End Patch
 
 Each chunk matches exactly one place, and added lines go exactly where they stand among its \
-lines. An `@@` anchor names one line of the file, whole or by its start. A chunk that repeats \
+lines. An `@@` anchor names a line of the file, whole or by its start. A chunk that repeats \
 the anchor line is placed around it. Any other chunk goes below the anchor and above the next \
-one, and a chunk of only `+` lines goes right after it. To insert before a line, give that line \
-as context after the `+` lines. A failed call wrote nothing, and its message names the candidate \
-places or the closest one.";
+one. A chunk of only `+` lines goes right after its anchor, which has to name only one line. To \
+insert before a line, give that line as context after the `+` lines. A failed call wrote \
+nothing, and its message names the candidate places or the closest one.";
 
 /// Answers one JSON-RPC message per line until stdin ends.
 pub fn serve() -> ExitCode {

@@ -517,13 +517,13 @@ fn missing_anchor_is_reported() {
     assert_eq!(
         error("a\nb\n", "@@ def missing():\n-a\n+A"),
         "f.txt: chunk 1 of 1: anchor `@@ def missing():` not found\n  \
-         an anchor has to be a whole line, or the start of exactly one line"
+         an anchor has to be a whole line, or the start of one"
     );
 
     assert_eq!(
         error("a\nb\n", "@@\n-a\n+A\n@@ def missing():\n-b\n+B"),
         "f.txt: chunk 2 of 2: anchor `@@ def missing():` not found\n  \
-         an anchor has to be a whole line, or the start of exactly one line"
+         an anchor has to be a whole line, or the start of one"
     );
 }
 
@@ -540,7 +540,7 @@ fn anchor_on_a_line_an_earlier_chunk_adds_is_pointed_out() {
 }
 
 #[test]
-fn anchor_may_be_the_start_of_exactly_one_line() {
+fn anchor_may_be_the_start_of_a_line() {
     let file = "class X {\n    int a() {\n        return 1;\n    }\n\n    \
                 private static int b(int x, int y) {\n        return 1;\n    }\n}\n";
     assert_eq!(
@@ -557,12 +557,30 @@ fn anchor_may_be_the_start_of_exactly_one_line() {
     );
 
     assert_eq!(
-        error(
-            "    static int a() {\n    }\n    static int b() {\n    }\n",
-            "@@ static int\n-    }\n+    };"
-        ),
-        "f.txt: chunk 1 of 1: anchor `@@ static int` is the start of 2 lines, at lines 1, 3\n  \
-         give more of the line so that it starts only one"
+        updated(
+            "    static int a() {\n    }\n    static int b() {\n        return 2;\n    }\n",
+            "@@ static int\n-        return 2;\n+        return 4;"
+        )
+        .unwrap(),
+        "    static int a() {\n    }\n    static int b() {\n        return 4;\n    }\n"
+    );
+}
+
+#[test]
+fn addition_only_chunk_whose_anchor_names_several_lines_is_rejected() {
+    let file = "fn a() {\n    x();\n}\nfn b() {\n    x();\n}\n";
+    assert_eq!(
+        error(file, "@@     x();\n+    y();"),
+        "f.txt: chunk 1 of 1: anchor `@@     x();` names 2 lines, at lines 2, 5\n  \
+         a chunk of only `+` lines goes right after its anchor, so give an anchor that names \
+         one line"
+    );
+
+    assert_eq!(
+        error(file, "@@ fn\n+// note"),
+        "f.txt: chunk 1 of 1: anchor `@@ fn` names 2 lines, at lines 1, 4\n  \
+         a chunk of only `+` lines goes right after its anchor, so give an anchor that names \
+         one line"
     );
 }
 

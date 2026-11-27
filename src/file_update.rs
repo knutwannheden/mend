@@ -93,21 +93,26 @@ fn compute_replacements(
                     }
                     return Err(ApplyPatchError::DoesNotApply(format!(
                         "{chunk_label}: anchor `@@ {ctx_line}` not found\n  \
-                         an anchor has to be a whole line, or the start of exactly one line"
-                    )));
-                }
-                Anchor::Ambiguous(lines) => {
-                    return Err(ApplyPatchError::DoesNotApply(format!(
-                        "{chunk_label}: anchor `@@ {ctx_line}` is the start of {} lines, at {}\n  \
-                         give more of the line so that it starts only one",
-                        lines.len(),
-                        line_numbers(&lines)
+                         an anchor has to be a whole line, or the start of one"
                     )));
                 }
             }
         }
 
         if chunk.old_lines.is_empty() {
+            // Nothing but the anchor tells where the added lines go.
+            if let Some(ctx_line) = &chunk.change_context
+                && let named = named_lines(original_lines, ctx_line)
+                && named.len() > 1
+            {
+                return Err(ApplyPatchError::DoesNotApply(format!(
+                    "{chunk_label}: anchor `@@ {ctx_line}` names {} lines, at {}\n  \
+                     a chunk of only `+` lines goes right after its anchor, so give an anchor \
+                     that names one line",
+                    named.len(),
+                    line_numbers(&named)
+                )));
+            }
             let at = match anchor_line {
                 Some(line) if !chunk.is_end_of_file => line + 1,
                 _ => original_lines.len(),
@@ -686,12 +691,10 @@ enum Anchor {
     /// Its nearest occurrence, when it occurs only above the search start.
     Above(usize),
     Missing,
-    /// The lines it is the start of, when it is no whole line and starts several.
-    Ambiguous(Vec<usize>),
 }
 
-/// Finds an anchor as a whole line, or failing that as the start of exactly one line. A
-/// method signature is often given only up to its opening parenthesis.
+/// Finds an anchor as a whole line, or failing that as the start of a line. A method
+/// signature is often given only up to its opening parenthesis.
 fn locate_anchor(lines: &[String], anchor: &str, from: usize) -> Anchor {
     let whole = [anchor.to_string()];
     match seek_sequence(lines, &whole, from, /*eof*/ false) {
@@ -708,16 +711,29 @@ fn locate_anchor(lines: &[String], anchor: &str, from: usize) -> Anchor {
         }
         Match::None => {}
     }
-    let start = anchor.trim();
-    let starting: Vec<usize> = (0..lines.len())
-        .filter(|&idx| !start.is_empty() && lines[idx].trim_start().starts_with(start))
-        .collect();
-    match starting.as_slice() {
-        [] => Anchor::Missing,
-        &[idx] if idx >= from => Anchor::Below(idx),
-        &[idx] => Anchor::Above(idx),
-        _ => Anchor::Ambiguous(starting),
+    let starting = lines_starting_with(lines, anchor);
+    match starting.iter().find(|&&idx| idx >= from) {
+        Some(&idx) => Anchor::Below(idx),
+        None => starting
+            .last()
+            .map_or(Anchor::Missing, |&idx| Anchor::Above(idx)),
     }
+}
+
+/// Every line `anchor` names: those it equals, or failing that, those it is the start of.
+fn named_lines(lines: &[String], anchor: &str) -> Vec<usize> {
+    match seek_sequence(lines, &[anchor.to_string()], 0, /*eof*/ false) {
+        Match::One(idx) => vec![idx],
+        Match::Many(found) => found,
+        Match::None => lines_starting_with(lines, anchor),
+    }
+}
+
+fn lines_starting_with(lines: &[String], anchor: &str) -> Vec<usize> {
+    let start = anchor.trim();
+    (0..lines.len())
+        .filter(|&idx| !start.is_empty() && lines[idx].trim_start().starts_with(start))
+        .collect()
 }
 
 /// Formats zero-based line indices as `line 3` or `lines 3, 7`.

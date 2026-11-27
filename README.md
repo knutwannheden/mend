@@ -59,7 +59,7 @@ Each chunk starts with `@@`. Its context lines start with a space, its removed l
 
 ### Anchors
 
-The text after `@@` is the chunk's anchor. It names one line of the file, whole or by its start, such as a function signature up to its `(`, and that start has to belong to exactly one line. A bare `@@` gives no anchor.
+The text after `@@` is the chunk's anchor. It names a line of the file, whole or by its start, such as a function signature up to its `(`. A bare `@@` gives no anchor.
 
 A chunk is placed below its anchor and above the next anchor of a later chunk, so an anchor tells apart text that occurs more than once. This changes the line in `save` even when `load` has the same one:
 
@@ -69,6 +69,8 @@ A chunk is placed below its anchor and above the next anchor of a later chunk, s
 +    retries = 5
 ```
 
+An anchor that names several lines stands for the first of them below the previous chunk, and the chunk's own lines have to pick out one place below it.
+
 A chunk whose own lines include its anchor line is placed with that line on the anchor, so it can change the anchor line or add lines before it:
 
 ```
@@ -77,7 +79,7 @@ A chunk whose own lines include its anchor line is placed with that line on the 
 +def load(path):
 ```
 
-A chunk of only `+` lines goes right after its anchor line:
+A chunk of only `+` lines goes right after its anchor line, so its anchor has to name only one line:
 
 ```
 @@ import os
@@ -232,7 +234,7 @@ Use `mend` for hand-written changes to existing files, in place of your edit too
 - Always quote the delimiter as `<<'EOF'`. Unquoted, the shell expands `$name`, backticks and `$(…)` inside the patch. For a path prefix, pass `-C <dir>`.
 - Chain what depends on the edit with `&&` on the heredoc line. A command on the next line runs even when the patch failed.
 - Each chunk matches exactly one place. Added lines go exactly where they stand among the chunk's lines.
-- An `@@ <line>` anchor names one line of the file, whole or by its start, such as a signature up to `(`. A chunk that repeats the anchor line is placed around it, so it can change that line or add lines before it. Any other chunk goes below the anchor and above the next one. A chunk of only `+` lines goes right after the anchor.
+- An `@@ <line>` anchor names a line of the file, whole or by its start, such as a signature up to `(`. A chunk that repeats the anchor line is placed around it, so it can change that line or add lines before it. Any other chunk goes below the anchor and above the next one. A chunk of only `+` lines goes right after the anchor, which has to name only one line.
 - To insert before a line, give that line as context after the `+` lines. Before a function, that is the first line of its comment or attribute.
 - Exit 1 means nothing was written. Stderr names the candidate places or the closest one, so correct the chunk from it.
 - `--check --diff` previews a patch. `--revert --then '<command>'` makes a temporary edit such as a mutation check.
@@ -244,7 +246,7 @@ Use `mend` for hand-written changes to existing files, in place of your edit too
 - A patch that fails leaves no file changed. Codex writes each file as it goes.
 - A chunk that matches several places is an error. Codex edits the first.
 - A chunk may repeat its anchor line, to change it or add lines before it. Codex looks for a chunk's lines only below its anchor.
-- A chunk of only `+` lines under an anchor goes right after the anchor line. Codex appends it to the end of the file.
+- A chunk of only `+` lines under an anchor goes right after the anchor line, which has to name only one line. Codex appends it to the end of the file.
 - Chunks of one file need not be in file order, and several chunks may name the same anchor. Codex rejects both.
 - Standard output has no `Success.` header, and failures have distinct exit statuses.
 - A patch has to reach the command through a shell. The heredoc text `<<'EOF'` passed literally as an argument is not unwrapped, and the `*** Environment ID:` line is not accepted.
