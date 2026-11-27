@@ -118,6 +118,24 @@ fn revert_restores_a_read_only_file() -> anyhow::Result<()> {
 }
 
 #[test]
+fn revert_restores_a_dangling_symbolic_link_that_add_file_replaced() -> anyhow::Result<()> {
+    let tmp = tempdir()?;
+    std::os::unix::fs::symlink("missing.txt", tmp.path().join("link.txt"))?;
+
+    patchwork(tmp.path())
+        .args(["--revert", "--then", "true"])
+        .write_stdin("*** Begin Patch\n*** Add File: link.txt\n+added\n*** End Patch")
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read_link(tmp.path().join("link.txt"))?,
+        Path::new("missing.txt")
+    );
+    Ok(())
+}
+
+#[test]
 fn signal_that_arrives_as_the_command_ends_still_exits_128_plus_n() -> anyhow::Result<()> {
     let tmp = tempdir()?;
     fs::write(tmp.path().join("f.txt"), "old\n")?;

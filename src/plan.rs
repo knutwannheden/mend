@@ -118,10 +118,17 @@ impl FileChange {
             return Err(io::Error::other("it changed after the patch was applied"));
         }
         match (&self.before, &self.link) {
-            (None, _) => match fs::remove_file(self.write_path()) {
-                Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
-                _ => Ok(()),
-            },
+            (None, link) => {
+                match fs::remove_file(self.write_path()) {
+                    Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+                    _ => {}
+                }
+                // A dangling link has no contents, and writing the file replaced it.
+                match link {
+                    Some(link) => symlink(link, &self.path),
+                    None => Ok(()),
+                }
+            }
             (Some(_), Some(link)) if self.after.is_none() => symlink(link, &self.path),
             (Some(before), _) => {
                 // Renamed into place as `commit` does, since a read-only file cannot be
