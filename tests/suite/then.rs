@@ -255,6 +255,24 @@ fn signal_while_the_files_are_written_waits_until_every_file_is_written() -> any
 }
 
 #[test]
+fn revert_stops_what_the_command_started_before_restoring() -> anyhow::Result<()> {
+    let tmp = tempdir()?;
+    fs::write(tmp.path().join("f.txt"), "old\n")?;
+
+    let command = "touch started; (sleep 1; echo late > late.txt); :";
+    let mut child = spawn_mend(tmp.path(), &["--revert", "--then", command], PATCH)?;
+    wait_until("the command did not start", || {
+        tmp.path().join("started").exists()
+    });
+    unsafe { libc::kill(child.id() as i32, libc::SIGTERM) };
+
+    assert_eq!(child.wait()?.code(), Some(128 + 15));
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(!tmp.path().join("late.txt").exists());
+    Ok(())
+}
+
+#[test]
 fn revert_needs_then_and_then_excludes_check() -> anyhow::Result<()> {
     let tmp = tempdir()?;
     fs::write(tmp.path().join("f.txt"), "old\n")?;

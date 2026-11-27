@@ -1,5 +1,6 @@
 use std::io::Read;
 use std::io::Write;
+use std::process::Child;
 use std::process::Command;
 use std::process::ExitCode;
 use std::process::ExitStatus;
@@ -387,28 +388,48 @@ fn run_command(command: &str, signal: Option<&AtomicUsize>) -> std::io::Result<O
     } else {
         ("sh", "-c")
     };
-    let mut child = Command::new(shell)
-        .args([flag, command])
-        .stdin(Stdio::null())
-        .spawn()?;
+    let mut builder = Command::new(shell);
+    builder.args([flag, command]).stdin(Stdio::null());
+    #[cfg(unix)]
+    if signal.is_some() {
+        use std::os::unix::process::CommandExt;
+        // In a group of its own, the command and every process it starts can be stopped together.
+        builder.process_group(0);
+    }
+    let mut child = builder.spawn()?;
     let Some(signal) = signal else {
         return child.wait().map(Outcome::Finished);
     };
     loop {
         let finished = child.try_wait()?;
-        // Ctrl-C reaches the command and this process together, so the command may have ended
-        // by the time the signal shows up here. That still counts as an interruption.
+        // The command may have ended on its own as the signal arrived. That still counts as an
+        // interruption.
         let received = signal.load(Ordering::Relaxed);
         if received != 0 {
-            if finished.is_none() {
-                let _ = child.kill();
-                let _ = child.wait();
-            }
+            stop(&mut child, finished.is_some());
             return Ok(Outcome::Interrupted(received));
         }
         if let Some(status) = finished {
             return Ok(Outcome::Finished(status));
         }
         std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// Stops the command and whatever it started, which may outlive a command that has `finished`.
+#[cfg(unix)]
+fn stop(child: &mut Child, finished: bool) {
+    // A negative id names the process group that `run_command` gave the command.
+    unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL) };
+    if !finished {
+        let _ = child.wait();
+    }
+}
+
+#[cfg(not(unix))]
+fn stop(child: &mut Child, finished: bool) {
+    if !finished {
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }

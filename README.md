@@ -42,7 +42,7 @@ Keep the quotes in `<<'EOF'`. In an unquoted heredoc the shell expands every `$n
 
 To run a build or test only when the patch applied, chain it with `&&` on the heredoc line, as in the example above. A long command can follow the closing `EOF` when the heredoc line ends with `&&`. A command that merely sits on the next line runs even when the patch failed.
 
-`--then` is there for `--revert`, which makes an edit last for one run, such as a mutation check. The files are also restored when `mend` receives `SIGHUP`, `SIGINT` or `SIGTERM` while the command runs.
+`--then` is there for `--revert`, which makes an edit last for one run, such as a mutation check. The files are also restored when `mend` receives `SIGHUP`, `SIGINT` or `SIGTERM` while the command runs. The command runs in a process group of its own, and everything in that group is stopped before the files are restored.
 
 ```sh
 mend --revert --then 'cargo test parser' < mutant.patch
