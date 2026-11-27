@@ -496,17 +496,20 @@ fn all_stays_within_the_step_that_first_has_a_match() {
 }
 
 #[test]
-fn all_with_fragments_replaces_every_occurrence() {
+fn all_with_fragments_replaces_every_occurrence_and_notes_them() {
     let both = Matching {
         fragments: true,
         all: true,
     };
+    let (contents, notes) = applied("a tail\nb tail tail\n", "@@\n-tail\n+T", both).unwrap();
+    assert_eq!(contents, "a T\nb T T\n");
     assert_eq!(
-        applied("a tail\nb tail tail\n", "@@\n-tail\n+T", both)
-            .unwrap()
-            .0,
-        "a T\nb T T\n"
+        notes,
+        ["f.txt: chunk 1 of 1 changed 3 places, at lines 1, 2"]
     );
+
+    let (_, notes) = applied("tail tail\n", "@@\n-tail\n+T", both).unwrap();
+    assert_eq!(notes, ["f.txt: chunk 1 of 1 changed 2 places, at line 1"]);
 }
 
 #[test]

@@ -404,6 +404,8 @@ fn compute_replacements(
                 }
             }
         }
+        // A fragment may occur several times on one line, so its places are its parts.
+        let changed = parts.len().max(places.len());
         for (line, part) in parts {
             if fragments
                 .iter()
@@ -416,10 +418,10 @@ fn compute_replacements(
             }
             fragments.push((line, part, &new_slice[0]));
         }
-        if places.len() > 1 {
+        if changed > 1 {
             notes.push(format!(
                 "{chunk_label} changed {} places, at {}",
-                places.len(),
+                changed,
                 line_numbers(&places)
             ));
         }
