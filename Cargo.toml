@@ -6,9 +6,6 @@ license = "Apache-2.0"
 description = "All-or-nothing multi-file edits for coding agents, in the Codex apply_patch format"
 repository = "https://github.com/knutwannheden/mend"
 
-[lib]
-doctest = false
-
 [dependencies]
 similar = "3"
 serde_json = "1"

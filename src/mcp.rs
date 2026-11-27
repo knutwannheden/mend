@@ -5,10 +5,10 @@ use std::io::BufRead;
 use std::io::Write;
 use std::process::ExitCode;
 
-use mend::ApplyPatchError;
-use mend::Matching;
-use mend::Plan;
-use mend::parse_patch;
+use crate::ApplyPatchError;
+use crate::Matching;
+use crate::Plan;
+use crate::parse_patch;
 use serde_json::Value;
 use serde_json::json;
 

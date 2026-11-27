@@ -12,12 +12,45 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use mend::ApplyPatchError;
-use mend::Matching;
-use mend::ParseError;
-use mend::Plan;
+use file_update::Matching;
+use parser::Hunk;
+use parser::ParseError;
+use parser::UpdateFileChunk;
+use parser::parse_patch;
+use plan::Plan;
+use thiserror::Error;
 
+mod file_update;
 mod mcp;
+mod parser;
+mod plan;
+mod seek_sequence;
+mod streaming_parser;
+mod text_file;
+
+#[derive(Debug, Error)]
+enum ApplyPatchError {
+    #[error(transparent)]
+    ParseError(#[from] ParseError),
+    #[error("{context}: {source}")]
+    IoError {
+        context: String,
+        #[source]
+        source: std::io::Error,
+    },
+    /// The patch does not fit the files it names.
+    #[error("{0}")]
+    DoesNotApply(String),
+    /// Files changed by the patch could not be put back.
+    #[error("{0}")]
+    Restore(String),
+}
+
+impl ApplyPatchError {
+    fn io(context: String, source: std::io::Error) -> Self {
+        Self::IoError { context, source }
+    }
+}
 
 const USAGE: &str = "Usage: mend [-C <dir>] [--check] [--diff] [--fragment] [--all] [--then <command> [--revert]] [PATCH]";
 
@@ -246,7 +279,7 @@ fn run(patch: &str, options: Options) -> Result<ExitCode, ApplyPatchError> {
     let cwd =
         std::env::current_dir().map_err(io_error("Failed to determine the current directory"))?;
 
-    let hunks = mend::parse_patch(patch)?;
+    let hunks = parse_patch(patch)?;
     let base = match &options.dir {
         Some(dir) => cwd.join(dir),
         None => cwd,
