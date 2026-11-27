@@ -148,7 +148,7 @@ fn apply(arguments: &Value) -> Result<String, String> {
     };
     let mut plan = Plan::compute(&hunks, &base, matching).map_err(fail)?;
     if !flag("check") {
-        plan.commit().map_err(fail)?;
+        crate::commit_uninterrupted(&mut plan).map_err(fail)?;
     }
     let mut text = String::new();
     for change in plan.changes() {

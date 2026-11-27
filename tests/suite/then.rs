@@ -188,6 +188,72 @@ fn revert_restores_the_files_when_terminated_while_the_command_runs() -> anyhow:
     Ok(())
 }
 
+/// Starts `mend` with `args` on `patch` without waiting for it.
+fn spawn_mend(dir: &Path, args: &[&str], patch: &str) -> anyhow::Result<std::process::Child> {
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_mend"))
+        .current_dir(dir)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    child
+        .stdin
+        .take()
+        .expect("stdin is piped")
+        .write_all(patch.as_bytes())?;
+    Ok(child)
+}
+
+fn wait_until(what: &str, done: impl Fn() -> bool) {
+    let started = Instant::now();
+    while !done() {
+        assert!(started.elapsed() < Duration::from_secs(10), "{what}");
+    }
+}
+
+#[test]
+fn signal_while_the_files_are_written_waits_until_every_file_is_written() -> anyhow::Result<()> {
+    use std::os::unix::process::ExitStatusExt;
+
+    let tmp = tempdir()?;
+    let count = 2000;
+    let mut patch = String::from("*** Begin Patch\n");
+    for i in 0..count {
+        fs::write(tmp.path().join(format!("f{i}.txt")), "old\n")?;
+        patch.push_str(&format!("*** Update File: f{i}.txt\n@@\n-old\n+new\n"));
+    }
+    patch.push_str("*** End Patch");
+
+    let mut child = spawn_mend(tmp.path(), &[], &patch)?;
+    let first = tmp.path().join("f0.txt");
+    wait_until("the first file was not written", || {
+        fs::read_to_string(&first).is_ok_and(|contents| contents == "new\n")
+    });
+    unsafe { libc::kill(child.id() as i32, libc::SIGTERM) };
+    let status = child.wait()?;
+
+    // The writes may all be done, and the process gone, before the signal is sent.
+    assert!(
+        status.signal() == Some(libc::SIGTERM) || status.success(),
+        "{status}"
+    );
+    for i in 0..count {
+        assert_eq!(
+            fs::read_to_string(tmp.path().join(format!("f{i}.txt")))?,
+            "new\n"
+        );
+    }
+    let leftovers = fs::read_dir(tmp.path())?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|name| name.to_string_lossy().contains(".mend-"))
+        .count();
+    assert_eq!(leftovers, 0);
+    Ok(())
+}
+
 #[test]
 fn revert_needs_then_and_then_excludes_check() -> anyhow::Result<()> {
     let tmp = tempdir()?;

@@ -121,6 +121,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "libc",
  "pretty_assertions",
  "serde_json",
  "signal-hook",

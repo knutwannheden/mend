@@ -26,7 +26,7 @@ A docs/greeting.md
 mend [-C <dir>] [--check] [--diff] [--fragment] [--all] [--then <command> [--revert]] [PATCH]
 ```
 
-The patch is read from the `PATCH` argument, or from stdin when there is none. A relative path in the patch is resolved against the current directory.
+The patch is read from the `PATCH` argument, or from stdin when there is none. A relative path in the patch is resolved against the current directory. A termination signal that arrives while the files are written takes effect once they all are.
 
 | Option | Effect |
 |---|---|

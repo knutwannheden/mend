@@ -5,6 +5,8 @@ use std::process::ExitCode;
 use std::process::ExitStatus;
 use std::process::Stdio;
 use std::sync::Arc;
+use std::sync::OnceLock;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -259,7 +261,10 @@ fn run(patch: &str, options: Options) -> Result<ExitCode, ApplyPatchError> {
         false => None,
     };
     if !options.check {
-        plan.commit()?;
+        match signal {
+            Some(_) => plan.commit()?,
+            None => commit_uninterrupted(&mut plan)?,
+        }
     }
 
     let mut stdout = std::io::stdout().lock();
@@ -311,6 +316,49 @@ enum Outcome {
     Finished(ExitStatus),
     /// This process received the signal with the given number while the command ran.
     Interrupted(usize),
+}
+
+/// Commits `plan` with termination signals held off, then acts on one that arrived, so that a
+/// signal never ends the process with the patch half written.
+#[cfg(unix)]
+fn commit_uninterrupted(plan: &mut Plan) -> Result<(), ApplyPatchError> {
+    use signal_hook::consts::SIGHUP;
+    use signal_hook::consts::SIGINT;
+    use signal_hook::consts::SIGTERM;
+
+    type Held = (Arc<AtomicBool>, Arc<AtomicUsize>);
+    static HELD: OnceLock<Result<Held, String>> = OnceLock::new();
+    let held = HELD.get_or_init(|| {
+        let deliver = Arc::new(AtomicBool::new(true));
+        let pending = Arc::new(AtomicUsize::new(0));
+        for signal in [SIGHUP, SIGINT, SIGTERM] {
+            // Registered first, so that a signal while `deliver` is set ends the process as the
+            // default action would.
+            signal_hook::flag::register_conditional_default(signal, Arc::clone(&deliver))
+                .and_then(|_| {
+                    signal_hook::flag::register_usize(signal, Arc::clone(&pending), signal as usize)
+                })
+                .map_err(|error| error.to_string())?;
+        }
+        Ok((deliver, pending))
+    });
+    let (deliver, pending) = held.as_ref().map_err(|error| ApplyPatchError::IoError {
+        context: "Failed to watch for signals".to_string(),
+        source: std::io::Error::other(error.clone()),
+    })?;
+    deliver.store(false, Ordering::SeqCst);
+    let committed = plan.commit();
+    deliver.store(true, Ordering::SeqCst);
+    let signal = pending.swap(0, Ordering::SeqCst);
+    if signal != 0 {
+        let _ = signal_hook::low_level::emulate_default_handler(signal as i32);
+    }
+    committed
+}
+
+#[cfg(not(unix))]
+fn commit_uninterrupted(plan: &mut Plan) -> Result<(), ApplyPatchError> {
+    plan.commit()
 }
 
 /// Returns a cell that holds the number of the last termination signal received, or zero.
