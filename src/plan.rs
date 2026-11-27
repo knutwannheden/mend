@@ -273,6 +273,9 @@ impl Plan {
                 (Some(contents), Some(metadata.permissions()))
             }
             Err(source) if source.kind() == io::ErrorKind::NotFound => (None, None),
+            Err(source) if source.kind() == io::ErrorKind::NotADirectory => {
+                return Err(self.under_a_file(label, cwd, action, source));
+            }
             Err(source) => {
                 return Err(ApplyPatchError::io(
                     format!("Failed to read {}", label.display()),
@@ -289,6 +292,38 @@ impl Plan {
             link,
         });
         Ok(self.changes.len() - 1)
+    }
+
+    /// The error for a path that names a file as one of its directories.
+    fn under_a_file(
+        &self,
+        label: &Path,
+        cwd: &Path,
+        action: &str,
+        source: io::Error,
+    ) -> ApplyPatchError {
+        let Some(file) = label
+            .ancestors()
+            .skip(1)
+            .find(|dir| cwd.join(dir).is_file())
+        else {
+            return ApplyPatchError::io(format!("Failed to read {}", label.display()), source);
+        };
+        let mut message = format!("cannot {action}, {} is a file", file.display());
+        let path = resolve_directory(&cwd.join(file));
+        // The patch's own changes are written together, so the file is still there when the
+        // paths under it would be created.
+        if self
+            .changes
+            .iter()
+            .any(|change| change.path == path && change.after.is_none())
+        {
+            message.push_str(&format!(
+                "\n  delete {} in a patch of its own first",
+                file.display()
+            ));
+        }
+        does_not_apply(label, &message)
     }
 
     /// Returns the contents the path has at this point in the patch, or an error if it has none.

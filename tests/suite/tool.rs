@@ -464,6 +464,29 @@ fn test_apply_patch_cli_failed_directory_creation_leaves_no_directory() -> anyho
 }
 
 #[test]
+fn test_apply_patch_cli_rejects_a_path_that_writes_under_a_file() -> anyhow::Result<()> {
+    let tmp = tempdir()?;
+    fs::write(tmp.path().join("a"), "file\n")?;
+
+    run_apply_patch_in_dir(
+        tmp.path(),
+        "*** Begin Patch\n*** Add File: a/b\n+b\n*** End Patch",
+    )?
+    .code(1)
+    .stderr("a/b: cannot write, a is a file\n");
+
+    run_apply_patch_in_dir(
+        tmp.path(),
+        "*** Begin Patch\n*** Delete File: a\n*** Add File: a/b\n+b\n*** End Patch",
+    )?
+    .code(1)
+    .stderr("a/b: cannot write, a is a file\n  delete a in a patch of its own first\n");
+
+    assert_eq!(fs::read_to_string(tmp.path().join("a"))?, "file\n");
+    Ok(())
+}
+
+#[test]
 fn test_apply_patch_cli_rejects_writing_a_link_and_its_target() -> anyhow::Result<()> {
     let tmp = tempdir()?;
     let root = tmp.path();
