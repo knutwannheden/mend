@@ -86,12 +86,15 @@ A chunk of only `+` lines goes right after its anchor line, so its anchor has to
 +import sys
 ```
 
-To insert before a line, give that line as a context line after the `+` lines. Before a function with a comment above it, that line is the comment's first line.
+To insert before a line, name it as the anchor and repeat it as a context line after the `+` lines. Before a function with a comment above it, name the function and start the context with the comment's first line, or the added lines go between the comment and the function:
 
 ```
-@@
-+import json
- import os
+@@ def load():
++def exists(path):
++    return os.path.exists(path)
++
+ # Reads the saved state.
+ def load():
 ```
 
 `*** End of File` after a chunk makes it match at the end of the file. A chunk of only `+` lines goes there when it ends with `*** End of File` or has no anchor.
