@@ -137,6 +137,12 @@ fn compute_replacements(
             {
                 return Err(inside_block_error(&chunk_label, at));
             }
+            if replacements
+                .iter()
+                .any(|&(_, (start, len, _))| start < at && at < start + len)
+            {
+                return Err(overlap_error(&chunk_label, at));
+            }
             replacements.push((at, (at, 0, chunk.new_lines.clone())));
             continue;
         }
@@ -383,6 +389,19 @@ fn compute_replacements(
                 {
                     return Err(inside_block_error(&chunk_label, at));
                 }
+                let replaced = &replacements[pushed..];
+                if let Some(&(_, (at, _, _))) =
+                    replacements[..pushed]
+                        .iter()
+                        .find(|&&(_, (at, old_len, _))| {
+                            old_len == 0
+                                && replaced
+                                    .iter()
+                                    .any(|&(_, (start, len, _))| start < at && at < start + len)
+                        })
+                {
+                    return Err(overlap_error(&chunk_label, at));
+                }
             }
         }
         for (line, part) in parts {
@@ -519,6 +538,15 @@ fn split_comment_error(chunk_label: &str, at: usize) -> ApplyPatchError {
         "{chunk_label} puts its added lines inside the comment at {}\n  \
          to insert before the comment, give its first line as a context line after the `+` lines",
         line_numbers(&[at - 1, at])
+    ))
+}
+
+/// `at` is the index of the line the added lines would go before.
+fn overlap_error(chunk_label: &str, at: usize) -> ApplyPatchError {
+    ApplyPatchError::DoesNotApply(format!(
+        "{chunk_label} overlaps an earlier chunk: lines added between lines {at} and {} would go \
+         inside lines the other replaces\n  merge the two chunks into one",
+        at + 1
     ))
 }
 

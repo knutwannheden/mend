@@ -187,6 +187,18 @@ fn chunk_above_the_previous_one_adds_lines_ahead_of_the_line_that_one_changed() 
 }
 
 #[test]
+fn chunk_that_adds_lines_inside_lines_another_chunk_replaces_is_rejected() {
+    let message = "f.txt: chunk 2 of 2 overlaps an earlier chunk: lines added between lines 2 and 3 \
+                   would go inside lines the other replaces\n  merge the two chunks into one";
+    assert_eq!(error("a\nb\nc\nd\n", "@@\n-b\n-c\n+X\n@@ b\n+y"), message);
+
+    assert_eq!(
+        error("a\nb\nc\n", "@@ a\n+y\n@@\n-a\n-b\n-c\n+Z"),
+        message.replace("2 and 3", "1 and 2")
+    );
+}
+
+#[test]
 fn next_anchor_ends_the_lines_a_chunk_is_looked_for_in_first() {
     assert_eq!(
         updated(
