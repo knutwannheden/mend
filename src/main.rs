@@ -453,10 +453,14 @@ fn run_command(command: &str, signal: Option<&AtomicUsize>) -> std::io::Result<O
 #[cfg(unix)]
 fn stop(child: &mut Child, finished: bool) {
     // A negative id names the process group that `run_command` gave the command.
-    unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL) };
+    let group = -(child.id() as i32);
+    unsafe { libc::kill(group, libc::SIGKILL) };
     if !finished {
         let _ = child.wait();
     }
+    // A process the shell was forking as the signal went out can miss it, while a shell that has
+    // been waited for forks no more.
+    unsafe { libc::kill(group, libc::SIGKILL) };
 }
 
 #[cfg(not(unix))]
