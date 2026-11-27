@@ -315,8 +315,7 @@ impl Plan {
                     source,
                 )
             };
-            self.created_dirs
-                .extend(create_parent_dirs(&change.temp_path()).map_err(fail)?);
+            create_parent_dirs(&change.temp_path(), &mut self.created_dirs).map_err(fail)?;
             change.write_temp(after).map_err(fail)?;
         }
         Ok(())
@@ -374,8 +373,9 @@ fn undo(changes: &[FileChange]) -> Result<(), String> {
     }
 }
 
-/// Creates the missing ancestors of `path` and returns them, outermost first.
-fn create_parent_dirs(path: &Path) -> io::Result<Vec<PathBuf>> {
+/// Creates the missing ancestors of `path`, outermost first, adding each to `created` as soon as
+/// it exists so that a failure further in still leaves it to be removed.
+fn create_parent_dirs(path: &Path, created: &mut Vec<PathBuf>) -> io::Result<()> {
     let mut missing = Vec::new();
     let mut dir = path.parent();
     while let Some(current) = dir
@@ -385,11 +385,15 @@ fn create_parent_dirs(path: &Path) -> io::Result<Vec<PathBuf>> {
         missing.push(current.to_path_buf());
         dir = current.parent();
     }
-    missing.reverse();
-    if let Some(innermost) = missing.last() {
-        fs::create_dir_all(innermost)?;
+    for dir in missing.into_iter().rev() {
+        match fs::create_dir(&dir) {
+            Ok(()) => created.push(dir),
+            // Another process made it in the meantime, so it is not ours to remove.
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists && dir.is_dir() => {}
+            Err(error) => return Err(error),
+        }
     }
-    Ok(missing)
+    Ok(())
 }
 
 /// Resolves symbolic links and `..` in the directory part of `path`, so that two spellings of

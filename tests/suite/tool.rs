@@ -449,6 +449,21 @@ fn test_apply_patch_cli_failed_write_restores_earlier_writes() -> anyhow::Result
 }
 
 #[test]
+fn test_apply_patch_cli_failed_directory_creation_leaves_no_directory() -> anyhow::Result<()> {
+    let tmp = tempdir()?;
+    let too_long = "x".repeat(300);
+
+    run_apply_patch_in_dir(
+        tmp.path(),
+        &format!("*** Begin Patch\n*** Add File: new/{too_long}/f.txt\n+f\n*** End Patch"),
+    )?
+    .code(4);
+
+    assert!(!tmp.path().join("new").exists());
+    Ok(())
+}
+
+#[test]
 fn test_apply_patch_cli_update_keeps_symlink_and_permissions() -> anyhow::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::fs::symlink;
