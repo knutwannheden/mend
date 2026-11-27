@@ -80,13 +80,13 @@ Patch format:
   *** Delete File: <path>  Deletes a file
   @@                       Starts a chunk
   @@ <line>                Starts a chunk at <line>: around it when the chunk repeats
-                           it, else below it. <line> may be given as just the start
-                           of exactly one line
+                           it, else below it. <line> may be given as just its start
   *** End of File          After a chunk: it must match at the end of the file
 
   A chunk line starts with a space (context), `-` (removed) or `+` (added).
-  A chunk of only `+` lines goes right after its @@ anchor line, or at the end of the
-  file when it has no anchor or ends with *** End of File.
+  A chunk of only `+` lines goes right after its @@ anchor line, which has to name
+  only one line, or at the end of the file when it has no anchor or ends with
+  *** End of File.
   To insert before a line, give that line as a context line after the `+` lines.
   Before a function with a comment above it, that line is the comment's first line.
   Added lines that end a chunk with a copy of the line just above them are rejected
@@ -105,6 +105,8 @@ Matching:
   end of the file, then in the whole file. The first of these that has a match
   decides, so an anchor before and after a chunk tells apart text that occurs more
   than once.
+  An anchor that names several lines stands for the first of them below the chunk
+  before it.
   A chunk with its own @@ anchor has to match between that anchor and the next one.
   Of several places there, the one that starts right below its anchor wins.
   A chunk whose own lines include its anchor line is placed with that line on the
