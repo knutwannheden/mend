@@ -20,6 +20,22 @@ M src/Greeter.java
 A docs/greeting.md
 ```
 
+## Installing
+
+With Rust 1.88 or later, from crates.io:
+
+```sh
+cargo install mend
+```
+
+Or the latest commit:
+
+```sh
+cargo install --git https://github.com/knutwannheden/mend
+```
+
+It is tested on Linux and macOS.
+
 ## Usage
 
 ```
@@ -182,6 +198,8 @@ Use `mend` for hand-written changes to existing files, in place of your edit too
 ```sh
 cargo build --release
 cargo test
+cargo clippy --all-targets -- -D warnings
+cargo fmt --check
 ```
 
 ## License
