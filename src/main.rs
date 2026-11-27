@@ -9,20 +9,20 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use patchwork::ApplyPatchError;
-use patchwork::Matching;
-use patchwork::ParseError;
-use patchwork::Plan;
+use mend::ApplyPatchError;
+use mend::Matching;
+use mend::ParseError;
+use mend::Plan;
 
 mod mcp;
 
-const USAGE: &str = "Usage: patchwork [-C <dir>] [--check] [--diff] [--fragment] [--all] [--then <command> [--revert]] [PATCH]";
+const USAGE: &str = "Usage: mend [-C <dir>] [--check] [--diff] [--fragment] [--all] [--then <command> [--revert]] [PATCH]";
 
 const HELP: &str = "\
 Applies a patch in the Codex apply_patch format, read from stdin or from PATCH.
 Either every file the patch names is changed, or none is.
 
-  patchwork <<'EOF' && make test
+  mend <<'EOF' && make test
   *** Begin Patch
   *** Update File: src/config.py
   @@ def load():
@@ -35,7 +35,7 @@ Either every file the patch names is changed, or none is.
   EOF
 
   Keep the quotes in <<'EOF'. Without them the shell expands every $name in the
-  patch and runs whatever stands in backticks before patchwork reads it.
+  patch and runs whatever stands in backticks before mend reads it.
 
 Patch format:
   *** Update File: <path>  Changes a file through one or more chunks
@@ -81,7 +81,7 @@ Matching:
   the candidate lines, or the closest place and its first differing line.
 
 Running a command after the patch:
-  `patchwork <<'EOF' && <command>` runs <command> only when the patch applied.
+  `mend <<'EOF' && <command>` runs <command> only when the patch applied.
   For a long command, end the line with `&&` and write it after the closing EOF.
   A command that merely follows on the next line runs even when the patch failed.
   --then with --revert is for an edit that lasts one run, such as a mutation check.
@@ -100,7 +100,7 @@ Options:
   -V, --version     Print the version
 
 As a tool:
-  `patchwork mcp` serves a `patch` tool over the Model Context Protocol on stdin and
+  `mend mcp` serves a `patch` tool over the Model Context Protocol on stdin and
   stdout. It takes the patch text as an argument, along with `cwd`, `check`, `diff`,
   `fragment` and `all`, and returns what the command would print.
 
@@ -134,7 +134,7 @@ struct Options {
 
 fn main() -> ExitCode {
     let usage_error = |message: &str| {
-        eprintln!("{message}\n{USAGE}\nRun `patchwork --help` for the patch format and examples.");
+        eprintln!("{message}\n{USAGE}\nRun `mend --help` for the patch format and examples.");
         ExitCode::from(MALFORMED)
     };
     let Ok(args) = std::env::args_os()
@@ -216,7 +216,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Options>,
                 return Ok(None);
             }
             "-V" | "--version" => {
-                println!("patchwork {}", env!("CARGO_PKG_VERSION"));
+                println!("mend {}", env!("CARGO_PKG_VERSION"));
                 return Ok(None);
             }
             option if option.starts_with('-') => return Err(format!("Unknown option: {option}")),
@@ -243,7 +243,7 @@ fn run(patch: &str, options: Options) -> Result<ExitCode, ApplyPatchError> {
     let cwd =
         std::env::current_dir().map_err(io_error("Failed to determine the current directory"))?;
 
-    let hunks = patchwork::parse_patch(patch)?;
+    let hunks = mend::parse_patch(patch)?;
     let base = match &options.dir {
         Some(dir) => cwd.join(dir),
         None => cwd,
@@ -297,11 +297,11 @@ fn run(patch: &str, options: Options) -> Result<ExitCode, ApplyPatchError> {
                 Some(code) => format!("exited with status {code}"),
                 None => "was terminated by a signal".to_string(),
             };
-            eprintln!("patchwork: the --then command {how}; {kept}");
+            eprintln!("mend: the --then command {how}; {kept}");
             Ok(ExitCode::from(THEN_FAILED))
         }
         Outcome::Interrupted(signal) => {
-            eprintln!("patchwork: interrupted by signal {signal}; {kept}");
+            eprintln!("mend: interrupted by signal {signal}; {kept}");
             Ok(ExitCode::from(128 + signal as u8))
         }
     }

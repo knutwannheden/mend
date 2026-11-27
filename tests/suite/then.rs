@@ -10,8 +10,8 @@ use tempfile::tempdir;
 
 const PATCH: &str = "*** Begin Patch\n*** Update File: f.txt\n@@\n-old\n+new\n*** Add File: sub/g.txt\n+added\n*** End Patch";
 
-fn patchwork(dir: &Path) -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_patchwork"));
+fn mend(dir: &Path) -> Command {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_mend"));
     cmd.current_dir(dir);
     cmd
 }
@@ -21,14 +21,14 @@ fn then_runs_once_the_patch_is_applied_and_not_when_it_does_not_fit() -> anyhow:
     let tmp = tempdir()?;
     fs::write(tmp.path().join("f.txt"), "old\n")?;
 
-    patchwork(tmp.path())
+    mend(tmp.path())
         .args(["--then", "cat f.txt"])
         .write_stdin(PATCH)
         .assert()
         .success()
         .stdout("M f.txt\nA sub/g.txt\nnew\n");
 
-    patchwork(tmp.path())
+    mend(tmp.path())
         .args(["--then", "touch ran"])
         .write_stdin(PATCH)
         .assert()
@@ -42,12 +42,12 @@ fn failing_then_command_exits_3_and_keeps_the_edits() -> anyhow::Result<()> {
     let tmp = tempdir()?;
     fs::write(tmp.path().join("f.txt"), "old\n")?;
 
-    patchwork(tmp.path())
+    mend(tmp.path())
         .args(["--then", "exit 7"])
         .write_stdin(PATCH)
         .assert()
         .code(3)
-        .stderr("patchwork: the --then command exited with status 7; the edits were kept\n");
+        .stderr("mend: the --then command exited with status 7; the edits were kept\n");
 
     assert_eq!(fs::read_to_string(tmp.path().join("f.txt"))?, "new\n");
     Ok(())
@@ -58,17 +58,17 @@ fn revert_restores_the_files_whether_the_command_fails_or_succeeds() -> anyhow::
     let tmp = tempdir()?;
     fs::write(tmp.path().join("f.txt"), "old\n")?;
 
-    patchwork(tmp.path())
+    mend(tmp.path())
         .args(["--revert", "--then", "cat f.txt; exit 7"])
         .write_stdin(PATCH)
         .assert()
         .code(3)
         .stdout("M f.txt\nA sub/g.txt\nnew\n")
-        .stderr("patchwork: the --then command exited with status 7; the files were restored\n");
+        .stderr("mend: the --then command exited with status 7; the files were restored\n");
     assert_eq!(fs::read_to_string(tmp.path().join("f.txt"))?, "old\n");
     assert!(!tmp.path().join("sub").exists());
 
-    patchwork(tmp.path())
+    mend(tmp.path())
         .args(["--revert", "--then", "true"])
         .write_stdin(PATCH)
         .assert()
@@ -82,7 +82,7 @@ fn revert_leaves_a_file_alone_that_changed_after_the_patch() -> anyhow::Result<(
     let tmp = tempdir()?;
     fs::write(tmp.path().join("f.txt"), "old\n")?;
 
-    patchwork(tmp.path())
+    mend(tmp.path())
         .args(["--revert", "--then", "echo later >> f.txt"])
         .write_stdin(PATCH)
         .assert()
@@ -106,7 +106,7 @@ fn revert_restores_a_read_only_file() -> anyhow::Result<()> {
     fs::write(&file, "old\n")?;
     fs::set_permissions(&file, fs::Permissions::from_mode(0o444))?;
 
-    patchwork(tmp.path())
+    mend(tmp.path())
         .args(["--revert", "--then", "true"])
         .write_stdin(PATCH)
         .assert()
@@ -122,7 +122,7 @@ fn revert_restores_a_dangling_symbolic_link_that_add_file_replaced() -> anyhow::
     let tmp = tempdir()?;
     std::os::unix::fs::symlink("missing.txt", tmp.path().join("link.txt"))?;
 
-    patchwork(tmp.path())
+    mend(tmp.path())
         .args(["--revert", "--then", "true"])
         .write_stdin("*** Begin Patch\n*** Add File: link.txt\n+added\n*** End Patch")
         .assert()
@@ -140,12 +140,12 @@ fn signal_that_arrives_as_the_command_ends_still_exits_128_plus_n() -> anyhow::R
     let tmp = tempdir()?;
     fs::write(tmp.path().join("f.txt"), "old\n")?;
 
-    patchwork(tmp.path())
+    mend(tmp.path())
         .args(["--revert", "--then", "kill -TERM $PPID; exit 5"])
         .write_stdin(PATCH)
         .assert()
         .code(128 + 15)
-        .stderr("patchwork: interrupted by signal 15; the files were restored\n");
+        .stderr("mend: interrupted by signal 15; the files were restored\n");
 
     assert_eq!(fs::read_to_string(tmp.path().join("f.txt"))?, "old\n");
     Ok(())
@@ -157,7 +157,7 @@ fn revert_restores_the_files_when_terminated_while_the_command_runs() -> anyhow:
     let file = tmp.path().join("f.txt");
     fs::write(&file, "old\n")?;
 
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_patchwork"))
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_mend"))
         .current_dir(tmp.path())
         .args(["--revert", "--then", "sleep 30"])
         .stdin(Stdio::piped())
@@ -193,12 +193,12 @@ fn revert_needs_then_and_then_excludes_check() -> anyhow::Result<()> {
     let tmp = tempdir()?;
     fs::write(tmp.path().join("f.txt"), "old\n")?;
 
-    patchwork(tmp.path())
+    mend(tmp.path())
         .arg("--revert")
         .write_stdin(PATCH)
         .assert()
         .code(2);
-    patchwork(tmp.path())
+    mend(tmp.path())
         .args(["--check", "--then", "touch ran"])
         .write_stdin(PATCH)
         .assert()

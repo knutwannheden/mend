@@ -3,7 +3,7 @@ use std::fs;
 use tempfile::tempdir;
 
 fn apply_patch_command() -> anyhow::Result<Command> {
-    Ok(Command::new(env!("CARGO_BIN_EXE_patchwork")))
+    Ok(Command::new(env!("CARGO_BIN_EXE_mend")))
 }
 
 #[test]
@@ -116,8 +116,8 @@ fn test_exit_status_distinguishes_a_patch_that_does_not_fit_from_a_malformed_one
         .code(2)
         .stderr(
             "Unknown option: --frobnicate\n\
-             Usage: patchwork [-C <dir>] [--check] [--diff] [--fragment] [--all] [--then <command> [--revert]] [PATCH]\n\
-             Run `patchwork --help` for the patch format and examples.\n",
+             Usage: mend [-C <dir>] [--check] [--diff] [--fragment] [--all] [--then <command> [--revert]] [PATCH]\n\
+             Run `mend --help` for the patch format and examples.\n",
         );
 
     let empty = apply_patch_command()?
@@ -226,7 +226,7 @@ fn test_help_shows_the_patch_format_and_how_to_chain_a_command() -> anyhow::Resu
 
     assert_eq!(help.status.code(), Some(0));
     assert!(stdout.contains("*** Update File: <path>"), "{stdout}");
-    assert!(stdout.contains("patchwork <<'EOF' && "), "{stdout}");
+    assert!(stdout.contains("mend <<'EOF' && "), "{stdout}");
     Ok(())
 }
 

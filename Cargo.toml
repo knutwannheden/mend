@@ -1,10 +1,10 @@
 [package]
-name = "patchwork"
+name = "mend"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 description = "All-or-nothing multi-file edits for coding agents, in the Codex apply_patch format"
-repository = "https://github.com/knutwannheden/patchwork"
+repository = "https://github.com/knutwannheden/mend"
 
 [lib]
 doctest = false

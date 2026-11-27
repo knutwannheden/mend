@@ -5,13 +5,13 @@ use serde_json::json;
 use std::fs;
 use tempfile::tempdir;
 
-/// Sends `requests` to `patchwork mcp`, one per line, and returns its replies by request id.
+/// Sends `requests` to `mend mcp`, one per line, and returns its replies by request id.
 fn replies(requests: &[Value]) -> anyhow::Result<Vec<Value>> {
     let input: String = requests
         .iter()
         .map(|request| format!("{request}\n"))
         .collect();
-    let output = Command::new(env!("CARGO_BIN_EXE_patchwork"))
+    let output = Command::new(env!("CARGO_BIN_EXE_mend"))
         .arg("mcp")
         .write_stdin(input)
         .output()?;
@@ -45,7 +45,7 @@ fn test_mcp_lists_the_patch_tool_and_applies_a_patch_in_the_given_directory() ->
 
     assert_eq!(replies.len(), 3, "{replies:?}");
     assert_eq!(replies[0]["result"]["protocolVersion"], "2025-06-18");
-    assert_eq!(replies[0]["result"]["serverInfo"]["name"], "patchwork");
+    assert_eq!(replies[0]["result"]["serverInfo"]["name"], "mend");
     assert_eq!(replies[1]["result"]["tools"][0]["name"], "patch");
     assert_eq!(replies[1]["result"]["tools"][0]["title"], "Apply patch");
     assert_eq!(
@@ -91,7 +91,7 @@ fn test_mcp_answers_an_unknown_protocol_version_with_its_own() -> anyhow::Result
 fn test_mcp_keeps_serving_after_a_line_that_is_not_utf8() -> anyhow::Result<()> {
     let mut input = b"{\"id\": \xff}\n".to_vec();
     input.extend_from_slice(b"{\"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"ping\"}\n");
-    let output = Command::new(env!("CARGO_BIN_EXE_patchwork"))
+    let output = Command::new(env!("CARGO_BIN_EXE_mend"))
         .arg("mcp")
         .write_stdin(input)
         .output()?;

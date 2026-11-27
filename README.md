@@ -1,9 +1,9 @@
-# patchwork
+# mend
 
-`patchwork` applies a multi-file edit written in the `*** Begin Patch` format of [OpenAI Codex](https://github.com/openai/codex). Either every file the patch names is changed, or none is. It is a small synchronous binary for coding agents and scripts, derived from the `apply-patch` crate of Codex.
+`mend` applies a multi-file edit written in the `*** Begin Patch` format of [OpenAI Codex](https://github.com/openai/codex). Either every file the patch names is changed, or none is. It is a small synchronous binary for coding agents and scripts, derived from the `apply-patch` crate of Codex.
 
 ```sh
-patchwork <<'EOF' && ./gradlew test
+mend <<'EOF' && ./gradlew test
 *** Begin Patch
 *** Update File: src/Greeter.java
 @@ class Greeter
@@ -23,7 +23,7 @@ A docs/greeting.md
 ## Usage
 
 ```
-patchwork [-C <dir>] [--check] [--diff] [--fragment] [--all] [--then <command> [--revert]] [PATCH]
+mend [-C <dir>] [--check] [--diff] [--fragment] [--all] [--then <command> [--revert]] [PATCH]
 ```
 
 The patch is read from the `PATCH` argument, or from stdin when there is none. A relative path in the patch is resolved against the current directory.
@@ -38,14 +38,14 @@ The patch is read from the `PATCH` argument, or from stdin when there is none. A
 | `--then <command>` | Runs `<command>` with `sh -c` once the patch is applied. When the command fails the edits stay in place. |
 | `--revert` | With `--then`, restores every file when the command has finished, whether it failed or succeeded. |
 
-Keep the quotes in `<<'EOF'`. In an unquoted heredoc the shell expands every `$name` in the patch and runs whatever stands in backticks, before `patchwork` reads it. For a long shared path prefix use `-C <dir>` instead of a shell variable.
+Keep the quotes in `<<'EOF'`. In an unquoted heredoc the shell expands every `$name` in the patch and runs whatever stands in backticks, before `mend` reads it. For a long shared path prefix use `-C <dir>` instead of a shell variable.
 
 To run a build or test only when the patch applied, chain it with `&&` on the heredoc line, as in the example above. A long command can follow the closing `EOF` when the heredoc line ends with `&&`. A command that merely sits on the next line runs even when the patch failed.
 
-`--then` is there for `--revert`, which makes an edit last for one run, such as a mutation check. The files are also restored when `patchwork` receives `SIGHUP`, `SIGINT` or `SIGTERM` while the command runs.
+`--then` is there for `--revert`, which makes an edit last for one run, such as a mutation check. The files are also restored when `mend` receives `SIGHUP`, `SIGINT` or `SIGTERM` while the command runs.
 
 ```sh
-patchwork --revert --then 'cargo test parser' < mutant.patch
+mend --revert --then 'cargo test parser' < mutant.patch
 ```
 
 ## Output
@@ -131,19 +131,19 @@ src/main.rs: chunk 2 of 3 matches nothing
 
 ## As a tool
 
-`patchwork mcp` serves a `patch` tool over the Model Context Protocol, so an agent passes the patch text as an argument instead of through a quoted heredoc. The tool takes `patch` and optionally `cwd`, `check`, `diff`, `fragment` and `all`, and returns what the command would print. A failed call wrote nothing and is marked as an error. It runs no commands, so `--then` stays with the command line.
+`mend mcp` serves a `patch` tool over the Model Context Protocol, so an agent passes the patch text as an argument instead of through a quoted heredoc. The tool takes `patch` and optionally `cwd`, `check`, `diff`, `fragment` and `all`, and returns what the command would print. A failed call wrote nothing and is marked as an error. It runs no commands, so `--then` stays with the command line.
 
 For Claude Code:
 
 ```sh
-claude mcp add --scope user patchwork -- patchwork mcp
+claude mcp add --scope user mend -- mend mcp
 ```
 
 For Codex, in `~/.codex/config.toml`:
 
 ```toml
-[mcp_servers.patchwork]
-command = "patchwork"
+[mcp_servers.mend]
+command = "mend"
 args = ["mcp"]
 ```
 
@@ -154,9 +154,9 @@ An agent will not pick the tool up by itself, and it does not read `--help` unpr
 ````markdown
 ## Editing files
 
-Use `patchwork` for hand-written changes to existing files, in place of your edit tool or a script that swaps one piece of text for another. It checks every chunk before it writes, and restores written files if a later write fails.
+Use `mend` for hand-written changes to existing files, in place of your edit tool or a script that swaps one piece of text for another. It checks every chunk before it writes, and restores written files if a later write fails.
 
-    patchwork <<'EOF' && make test
+    mend <<'EOF' && make test
     *** Begin Patch
     *** Update File: src/config.py
     @@ def load():
@@ -174,7 +174,7 @@ Use `patchwork` for hand-written changes to existing files, in place of your edi
 - To insert before a line, give that line as context after the `+` lines. Before a function, that is the first line of its comment or attribute.
 - Exit 1 means nothing was written. Stderr names the candidate places or the closest one, so correct the chunk from it.
 - `--check --diff` previews a patch. `--revert --then '<command>'` makes a temporary edit such as a mutation check.
-- `--fragment` lets one `-` and one `+` line replace part of a long line. `--all` changes every match. `*** Add File:` on an existing path replaces the file. `patchwork --help` has the rest.
+- `--fragment` lets one `-` and one `+` line replace part of a long line. `--all` changes every match. `*** Add File:` on an existing path replaces the file. `mend --help` has the rest.
 ````
 
 ## Building

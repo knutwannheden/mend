@@ -5,7 +5,7 @@ use std::path::Path;
 use tempfile::tempdir;
 
 fn run_apply_patch_in_dir(dir: &Path, patch: &str) -> anyhow::Result<assert_cmd::assert::Assert> {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_patchwork"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_mend"));
     cmd.current_dir(dir);
     Ok(cmd.arg(patch).assert())
 }
@@ -29,7 +29,7 @@ fn assert_apply_patch_updates_file(
 }
 
 fn apply_patch_command(dir: &Path) -> anyhow::Result<Command> {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_patchwork"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_mend"));
     cmd.current_dir(dir);
     Ok(cmd)
 }

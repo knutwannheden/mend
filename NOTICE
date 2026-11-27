@@ -1,7 +1,7 @@
 OpenAI Codex
 Copyright 2025 OpenAI
 
-patchwork is derived from the apply-patch crate of OpenAI Codex
+mend is derived from the apply-patch crate of OpenAI Codex
 (https://github.com/openai/codex, codex-rs/apply-patch at commit ea8ccc1d20ff65398e02490ac34f8c1012848625).
 The files taken from that crate have been modified. The git history of this repository
 records each change.

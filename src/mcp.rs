@@ -1,14 +1,14 @@
-//! Serves patchwork as a tool over the Model Context Protocol on stdin and stdout, so an agent
+//! Serves mend as a tool over the Model Context Protocol on stdin and stdout, so an agent
 //! passes a patch as an argument instead of through a quoted heredoc.
 
 use std::io::BufRead;
 use std::io::Write;
 use std::process::ExitCode;
 
-use patchwork::ApplyPatchError;
-use patchwork::Matching;
-use patchwork::Plan;
-use patchwork::parse_patch;
+use mend::ApplyPatchError;
+use mend::Matching;
+use mend::Plan;
+use mend::parse_patch;
 use serde_json::Value;
 use serde_json::json;
 
@@ -74,7 +74,7 @@ fn answer(message: &Value) -> Option<Value> {
                 .filter(|asked| PROTOCOL_VERSIONS.contains(asked))
                 .unwrap_or(PROTOCOL_VERSIONS[0]),
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "patchwork", "version": env!("CARGO_PKG_VERSION")},
+            "serverInfo": {"name": "mend", "version": env!("CARGO_PKG_VERSION")},
         })),
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({"tools": [tool()]})),

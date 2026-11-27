@@ -103,7 +103,7 @@ impl FileChange {
         let target = self.write_path();
         let mut name = std::ffi::OsString::from(".");
         name.push(target.file_name().unwrap_or_default());
-        name.push(format!(".patchwork-{}", std::process::id()));
+        name.push(format!(".mend-{}", std::process::id()));
         target.with_file_name(name)
     }
 
