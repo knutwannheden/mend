@@ -12,7 +12,8 @@ use patchwork::parse_patch;
 use serde_json::Value;
 use serde_json::json;
 
-const PROTOCOL_VERSION: &str = "2025-06-18";
+/// The protocol versions this server can answer in, newest first.
+const PROTOCOL_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
 const DESCRIPTION: &str =
     "Applies a patch in the Codex apply_patch format. Every chunk is checked \
@@ -39,14 +40,14 @@ places or the closest one.";
 /// Answers one JSON-RPC message per line until stdin ends.
 pub fn serve() -> ExitCode {
     let mut stdout = std::io::stdout().lock();
-    for line in std::io::stdin().lock().lines() {
+    for line in std::io::stdin().lock().split(b'\n') {
         let Ok(line) = line else {
             return ExitCode::FAILURE;
         };
-        if line.trim().is_empty() {
+        if line.trim_ascii().is_empty() {
             continue;
         }
-        let reply = match serde_json::from_str::<Value>(&line) {
+        let reply = match serde_json::from_slice::<Value>(&line) {
             Ok(message) => answer(&message),
             Err(error) => Some(json!({"jsonrpc": "2.0", "id": null,
                                       "error": {"code": -32700, "message": error.to_string()}})),
@@ -68,7 +69,10 @@ fn answer(message: &Value) -> Option<Value> {
     let params = &message["params"];
     let outcome = match message["method"].as_str().unwrap_or_default() {
         "initialize" => Ok(json!({
-            "protocolVersion": params["protocolVersion"].as_str().unwrap_or(PROTOCOL_VERSION),
+            "protocolVersion": params["protocolVersion"]
+                .as_str()
+                .filter(|asked| PROTOCOL_VERSIONS.contains(asked))
+                .unwrap_or(PROTOCOL_VERSIONS[0]),
             "capabilities": {"tools": {}},
             "serverInfo": {"name": "patchwork", "version": env!("CARGO_PKG_VERSION")},
         })),

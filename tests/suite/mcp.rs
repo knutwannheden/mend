@@ -77,3 +77,31 @@ fn test_mcp_call_that_does_not_apply_is_an_error_result_and_writes_nothing() -> 
     assert_eq!(fs::read_to_string(tmp.path().join("f.txt"))?, "one\n");
     Ok(())
 }
+
+#[test]
+fn test_mcp_answers_an_unknown_protocol_version_with_its_own() -> anyhow::Result<()> {
+    let replies = replies(&[json!({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                                   "params": {"protocolVersion": "2999-01-01"}})])?;
+
+    assert_eq!(replies[0]["result"]["protocolVersion"], "2025-06-18");
+    Ok(())
+}
+
+#[test]
+fn test_mcp_keeps_serving_after_a_line_that_is_not_utf8() -> anyhow::Result<()> {
+    let mut input = b"{\"id\": \xff}\n".to_vec();
+    input.extend_from_slice(b"{\"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"ping\"}\n");
+    let output = Command::new(env!("CARGO_BIN_EXE_patchwork"))
+        .arg("mcp")
+        .write_stdin(input)
+        .output()?;
+
+    let replies: Vec<Value> = String::from_utf8(output.stdout)?
+        .lines()
+        .map(serde_json::from_str)
+        .collect::<Result<_, _>>()?;
+    assert_eq!(replies.len(), 2, "{replies:?}");
+    assert_eq!(replies[0]["error"]["code"], -32700);
+    assert_eq!(replies[1], json!({"jsonrpc": "2.0", "id": 2, "result": {}}));
+    Ok(())
+}
