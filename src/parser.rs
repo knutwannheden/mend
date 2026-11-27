@@ -60,8 +60,8 @@ pub enum Hunk {
         path: PathBuf,
         move_path: Option<PathBuf>,
 
-        /// Chunks should be in order, i.e. the `change_context` of one chunk
-        /// should occur later in the file than the previous chunk.
+        /// In the order the patch gives them. Each chunk is looked for below the one before it
+        /// first, but may match above it.
         chunks: Vec<UpdateFileChunk>,
     },
 }
@@ -76,7 +76,7 @@ pub struct UpdateFileChunk {
     pub change_context: Option<String>,
 
     /// A contiguous block of lines that should be replaced with `new_lines`.
-    /// `old_lines` must occur strictly after `change_context`.
+    /// `old_lines` lie below `change_context`, or include it as one of their lines.
     pub old_lines: Vec<String>,
     pub new_lines: Vec<String>,
 
