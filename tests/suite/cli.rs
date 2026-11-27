@@ -195,20 +195,27 @@ fn test_diff_prints_a_unified_diff_in_place_of_status_lines() -> anyhow::Result<
 
 #[cfg(unix)]
 #[test]
-fn test_diff_gives_a_deleted_executable_its_mode() -> anyhow::Result<()> {
+fn test_diff_gives_a_moved_executable_its_mode_on_both_sides() -> anyhow::Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
     let tmp = tempdir()?;
-    fs::write(tmp.path().join("run.sh"), "")?;
+    fs::write(tmp.path().join("run.sh"), "old\n")?;
     fs::set_permissions(tmp.path().join("run.sh"), fs::Permissions::from_mode(0o755))?;
 
     apply_patch_command()?
         .current_dir(tmp.path())
         .arg("--diff")
-        .write_stdin("*** Begin Patch\n*** Delete File: run.sh\n*** End Patch")
+        .write_stdin(
+            "*** Begin Patch\n*** Update File: run.sh\n*** Move to: go.sh\n@@\n-old\n+new\n*** End Patch",
+        )
         .assert()
         .success()
-        .stdout("diff --git a/run.sh b/run.sh\ndeleted file mode 100755\n");
+        .stdout(
+            "diff --git a/run.sh b/run.sh\ndeleted file mode 100755\n\
+             --- a/run.sh\n+++ /dev/null\n@@ -1 +0,0 @@\n-old\n\
+             diff --git a/go.sh b/go.sh\nnew file mode 100755\n\
+             --- /dev/null\n+++ b/go.sh\n@@ -0,0 +1 @@\n+new\n",
+        );
     Ok(())
 }
 

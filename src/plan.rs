@@ -65,7 +65,7 @@ impl FileChange {
             let path = self.label.display();
             diff.push_str(&format!("diff --git a/{path} b/{path}\n"));
             match (&self.before, &self.after) {
-                (None, _) => diff.push_str("new file mode 100644\n"),
+                (None, _) => diff.push_str(&format!("new file mode {}\n", self.mode())),
                 (_, None) => diff.push_str(&format!("deleted file mode {}\n", self.mode())),
                 _ => {}
             }
