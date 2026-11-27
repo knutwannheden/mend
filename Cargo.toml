@@ -2,9 +2,12 @@
 name = "mend"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
 license = "Apache-2.0"
 description = "All-or-nothing multi-file edits for coding agents, in the Codex apply_patch format"
 repository = "https://github.com/knutwannheden/mend"
+keywords = ["patch", "apply-patch", "codex", "agent", "edit"]
+categories = ["command-line-utilities", "development-tools", "text-processing"]
 
 [dependencies]
 similar = "3"
