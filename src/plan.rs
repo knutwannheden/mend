@@ -70,7 +70,7 @@ impl FileChange {
                 _ => {}
             }
         }
-        let hunks = TextDiff::from_lines(&text(&self.before), &text(&self.after))
+        let hunks = TextDiff::from_lines(text(&self.before), text(&self.after))
             .unified_diff()
             .header(&name(&self.before, "a"), &name(&self.after, "b"))
             .to_string();
