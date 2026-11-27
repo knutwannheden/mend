@@ -227,6 +227,22 @@ impl Plan {
             }
         }
         plan.changes.retain(|change| change.before != change.after);
+        // A link and the file it points to are two paths in the patch but one file on disk, and
+        // each change would be computed from contents the other one overwrites.
+        let written: Vec<(PathBuf, &Path)> = plan
+            .changes
+            .iter()
+            .filter(|change| change.after.is_some())
+            .map(|change| (change.write_path(), change.label()))
+            .collect();
+        for (index, (path, label)) in written.iter().enumerate() {
+            if let Some((_, first)) = written[..index].iter().find(|(seen, _)| seen == path) {
+                return Err(does_not_apply(
+                    label,
+                    &format!("cannot write, {} names the same file", first.display()),
+                ));
+            }
+        }
         Ok(plan)
     }
 

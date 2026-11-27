@@ -464,6 +464,24 @@ fn test_apply_patch_cli_failed_directory_creation_leaves_no_directory() -> anyho
 }
 
 #[test]
+fn test_apply_patch_cli_rejects_writing_a_link_and_its_target() -> anyhow::Result<()> {
+    let tmp = tempdir()?;
+    let root = tmp.path();
+    fs::write(root.join("target.txt"), "one\n")?;
+    std::os::unix::fs::symlink("target.txt", root.join("link.txt"))?;
+
+    run_apply_patch_in_dir(
+        root,
+        "*** Begin Patch\n*** Update File: link.txt\n@@\n-one\n+two\n*** Update File: target.txt\n@@\n-one\n+three\n*** End Patch",
+    )?
+    .code(1)
+    .stderr("target.txt: cannot write, link.txt names the same file\n");
+
+    assert_eq!(fs::read_to_string(root.join("target.txt"))?, "one\n");
+    Ok(())
+}
+
+#[test]
 fn test_apply_patch_cli_update_keeps_symlink_and_permissions() -> anyhow::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::fs::symlink;
